@@ -670,7 +670,14 @@
     const n = lp.c.length;
     const bounds = (lp.varBounds || []).slice();
     while (bounds.length < n) bounds.push(defaultBound());
-    return bounds;
+    // JSON.stringify(Infinity) = "null", quindi un LP salvato in cronologia
+    // torna con ub=null dopo il reload. Senza normalizzazione, isFinite(null)
+    // = true ⇒ expandBounds aggiungerebbe vincoli fasulli x_j ≤ 0. Riporta a
+    // Infinity qualsiasi valore non-numerico-finito.
+    return bounds.map((b) => {
+      const ub = (typeof b.ub === "number" && isFinite(b.ub)) ? b.ub : Infinity;
+      return { ...b, ub };
+    });
   }
 
   // Returns LP enriched with upper-bound and binary-bound constraints. The added
