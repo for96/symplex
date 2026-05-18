@@ -857,9 +857,8 @@ body {
   border-right: 1px solid var(--rule-2);
   background: var(--bg-2);
   font-weight: 600;
-  width: 1%;
   white-space: nowrap;
-  padding: 6px 5px;
+  padding: 6px 7px;
 }
 .tableau th.col-rhs { color: var(--ink-2); }
 .tableau th.col-ratio {
@@ -1823,7 +1822,7 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
     font-size: 11px;
   }
   .tableau th { padding: 6px 5px; }
-  .tableau th.col-rhs, .tableau td.col-rhs { padding: 5px 4px; }
+  .tableau th.col-rhs, .tableau td.col-rhs { padding: 5px 5px; }
   .tableau th.col-basis, .tableau td.col-basis { padding: 5px 5px; }
 
   /* Step bar (tableau) compatta e touch */

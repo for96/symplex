@@ -87,6 +87,8 @@
     const T = [];
     const basis = new Array(m).fill(-1);
     const starterCol = new Array(m).fill(-1); // column whose initial coef is e_i — used for dual recovery
+    const starterSign = new Array(m).fill(1); // +1 if starter column has +1 at row i initially, -1 if -1
+    const slackForRow = new Array(m).fill(-1); // index of the slack column for constraint i (-1 if = constraint)
 
     let sPos = 0;
     let aPos = 0;
@@ -98,18 +100,24 @@
         row[slackStart + sPos] = 1;
         basis[i] = slackStart + sPos;
         starterCol[i] = slackStart + sPos;
+        starterSign[i] = 1;
+        slackForRow[i] = slackStart + sPos;
         sPos++;
       } else if (c.op === ">=") {
         row[slackStart + sPos] = -1;
+        slackForRow[i] = slackStart + sPos;
         sPos++;
         row[artStart + aPos] = 1;
         basis[i] = artStart + aPos;
         starterCol[i] = artStart + aPos;
+        starterSign[i] = 1;
         aPos++;
       } else {
         row[artStart + aPos] = 1;
         basis[i] = artStart + aPos;
         starterCol[i] = artStart + aPos;
+        starterSign[i] = 1;
+        // slackForRow stays -1 for = constraints
         aPos++;
       }
       row[totalCols - 1] = c.b;
@@ -144,6 +152,8 @@
       artStart,
       slackStart,
       starterCol,
+      starterSign,
+      slackForRow,
       isMin,
       cOrig,
       cFull,
@@ -204,6 +214,140 @@
     return { pivotRow, minRatio };
   }
 
+  // Phase I → Phase II transition. After phase 1 ends optimally, the artificial
+  // variables have served their purpose (kickstart a feasible basis) and should
+  // disappear from the tableau:
+  //   1. Try to pivot out any artificial still in basis at value 0 (degenerate
+  //      end of phase 1). If no non-artificial column has a non-zero coefficient
+  //      in that row, the original constraint was linearly redundant → drop row.
+  //   2. Strip every artificial column from T, colLabels, colTypes; remap basis
+  //      and starterCol indices accordingly.
+  //   3. Recompute the z-row with the original objective in the "−z" convention:
+  //      basic columns get 0, non-basic columns get z_j − c_j, RHS holds the
+  //      current value of z. The "−z" column itself sits in the rightmost slot
+  //      conceptually (with coefficient 1 in the z-row, 0 elsewhere) — it never
+  //      pivots and is displayed by the UI as the column above the RHS values.
+  function transitionToPhase2(state) {
+    const { T, basis, colLabels, colTypes, starterCol, starterSign, slackForRow, m, cFull } = state;
+    const cols = T[0].length;
+    const dataCols = cols - 1;
+
+    let workT = T.map((r) => r.slice());
+    let workBasis = basis.slice();
+    const rowsKept = new Array(m).fill(true);
+
+    // Step 1: pivot artificials out of basis where possible
+    for (let i = 0; i < m; i++) {
+      if (colTypes[workBasis[i]] !== "artificial") continue;
+      let pivotJ = -1;
+      for (let j = 0; j < dataCols; j++) {
+        if (colTypes[j] === "artificial") continue;
+        if (Math.abs(workT[i + 1][j]) > EPS) { pivotJ = j; break; }
+      }
+      if (pivotJ === -1) {
+        // Linearly redundant original constraint → drop row
+        rowsKept[i] = false;
+        continue;
+      }
+      const piv = workT[i + 1][pivotJ];
+      for (let q = 0; q < cols; q++) workT[i + 1][q] /= piv;
+      for (let r = 0; r < workT.length; r++) {
+        if (r === i + 1) continue;
+        const factor = workT[r][pivotJ];
+        if (Math.abs(factor) < 1e-14) continue;
+        for (let q = 0; q < cols; q++) workT[r][q] -= factor * workT[i + 1][q];
+      }
+      workBasis[i] = pivotJ;
+    }
+
+    // Step 2: strip artificial columns. For >= constraints we can recover the
+    // dual from the slack column (with a sign flip), so the artificial is fully
+    // removed. For = constraints there is no slack, so the artificial column is
+    // the only way to recover the dual / sensitivity range — keep it in the data
+    // (the UI hides it via the colTypes check, so visually it still "disappears").
+    const artNeededForDual = new Set();
+    for (let i = 0; i < starterCol.length; i++) {
+      const oldJ = starterCol[i];
+      if (oldJ < 0 || colTypes[oldJ] !== "artificial") continue;
+      const hasSlack = slackForRow && slackForRow[i] >= 0;
+      if (!hasSlack) artNeededForDual.add(oldJ);
+    }
+    const keepCol = new Array(cols).fill(true);
+    for (let j = 0; j < dataCols; j++) {
+      if (colTypes[j] === "artificial" && !artNeededForDual.has(j)) keepCol[j] = false;
+    }
+    const colMap = new Array(cols).fill(-1);
+    {
+      let next = 0;
+      for (let j = 0; j < cols; j++) {
+        if (keepCol[j]) { colMap[j] = next++; }
+      }
+    }
+
+    const trimmed = [];
+    for (let r = 0; r < workT.length; r++) {
+      if (r > 0 && !rowsKept[r - 1]) continue;
+      const row = [];
+      for (let j = 0; j < cols; j++) if (keepCol[j]) row.push(workT[r][j]);
+      trimmed.push(row);
+    }
+    const newColLabels = colLabels.filter((_, j) => keepCol[j]);
+    const newColTypes = colTypes.filter((_, j) => keepCol[j]);
+    const newBasis = [];
+    for (let i = 0; i < workBasis.length; i++) {
+      if (rowsKept[i]) newBasis.push(colMap[workBasis[i]]);
+    }
+    // Re-anchor starter columns: artificials are gone, so for >= constraints we
+    // switch the starter to the slack column (which starts with -1 instead of +1,
+    // so flip the sign). For = constraints there is no slack, so the starter is
+    // lost — duals/sensitivity for those constraints become unreported.
+    const newStarterCol = new Array(starterCol.length).fill(-1);
+    const newStarterSign = new Array(starterCol.length).fill(1);
+    for (let i = 0; i < starterCol.length; i++) {
+      const oldJ = starterCol[i];
+      if (oldJ < 0) continue;
+      if (keepCol[oldJ]) {
+        newStarterCol[i] = colMap[oldJ];
+        newStarterSign[i] = starterSign ? (starterSign[i] || 1) : 1;
+      } else if (slackForRow && slackForRow[i] >= 0 && keepCol[slackForRow[i]]) {
+        // Reroute to slack column (initial coef was -1 for >= constraints).
+        newStarterCol[i] = colMap[slackForRow[i]];
+        newStarterSign[i] = -1;
+      }
+    }
+
+    // Step 3: build phase-2 objective vector aligned with new columns, then
+    // recompute the z-row (−z convention: T[0][j] = z_j − c_j for j < cols−1;
+    // T[0][cols−1] = current z value).
+    const newDataCols = newColLabels.length - 1;
+    const newPhaseObj = new Array(newDataCols).fill(0);
+    for (let j = 0; j < dataCols; j++) {
+      if (keepCol[j]) newPhaseObj[colMap[j]] = cFull[j] || 0;
+    }
+    const newTotalCols = trimmed[0].length;
+    const constraintRows = trimmed.slice(1);
+    const newZRow = computeZRow(constraintRows, newBasis, newPhaseObj, newTotalCols);
+
+    return {
+      ...state,
+      T: [newZRow, ...constraintRows],
+      basis: newBasis,
+      colLabels: newColLabels,
+      colTypes: newColTypes,
+      starterCol: newStarterCol,
+      starterSign: newStarterSign,
+      m: newBasis.length,
+      nArt: newColTypes.filter((t) => t === "artificial").length,
+      artStart: -1,
+      cFull: newPhaseObj.slice(),
+      phase: 2,
+      phaseObj: newPhaseObj,
+      status: "running",
+      pivot: null,
+      note: "phase2-start",
+    };
+  }
+
   function pivotStep(state) {
     const { T, basis, m, phase } = state;
     const cols = T[0].length;
@@ -219,21 +363,7 @@
         if (phase1Obj < -1e-6) {
           return { ...state, status: "infeasible", note: "phase1-infeasible" };
         }
-        // Transition to phase 2: rebuild z-row with original objective
-        const newPhaseObj = state.cFull.slice();
-        while (newPhaseObj.length < cols - 1) newPhaseObj.push(0);
-        const constraintRows = T.slice(1);
-        const newZRow = computeZRow(constraintRows, basis, newPhaseObj, cols);
-        const newT = [newZRow, ...constraintRows.map((r) => r.slice())];
-        return {
-          ...state,
-          T: newT,
-          phase: 2,
-          phaseObj: newPhaseObj,
-          status: "running",
-          pivot: null,
-          note: "phase2-start",
-        };
+        return transitionToPhase2(state);
       }
       return { ...state, status: "optimal", note: "optimal" };
     }
@@ -325,11 +455,16 @@
   function dualValues(state) {
     // y_i* = z-row entry of starter col (for max-internal); sign-flip if primal was min.
     // Iterate over original constraints only — after cuts, m grows but starterCol doesn't.
-    const { T, starterCol, isMin } = state;
+    // After Phase I cleanup the starter for a >= constraint becomes the slack column
+    // (initial coef -1), so starterSign[i] tracks the sign flip needed.
+    const { T, starterCol, starterSign, isMin } = state;
     const origM = starterCol ? starterCol.length : 0;
     const y = new Array(origM).fill(0);
     for (let i = 0; i < origM; i++) {
-      const v = T[0][starterCol[i]];
+      const colIdx = starterCol[i];
+      if (colIdx == null || colIdx < 0) continue;
+      const sign = starterSign ? (starterSign[i] || 1) : 1;
+      const v = T[0][colIdx] / sign;
       y[i] = isMin ? -v : v;
     }
     return y;
@@ -380,7 +515,7 @@
     const n = lp.c.length;
 
     const dualVarNames = [];
-    for (let i = 0; i < m; i++) dualVarNames.push(`y_${i + 1}`);
+    for (let i = 0; i < m; i++) dualVarNames.push(`y${i + 1}`);
 
     const dualC = lp.constraints.map((c) => c.b);
     const dualConstraints = [];
@@ -458,9 +593,13 @@
         rhsRanges.push({ low: -Infinity, high: Infinity });
         continue;
       }
-      // For ≥ starter is artificial (sign +1); for ≤ slack is +1 too.
+      // For ≤: starter is the slack column (initial sign +1).
+      // For ≥ after phase-1 cleanup: starter is rerouted to the slack column
+      //                              (initial sign −1, tracked in starterSign).
+      // For = after phase-1 cleanup: starter is -1 (handled above).
+      const sign = state.starterSign ? (state.starterSign[i] || 1) : 1;
       const col = [];
-      for (let r = 0; r < m; r++) col.push(T[r + 1][starter]);
+      for (let r = 0; r < m; r++) col.push(T[r + 1][starter] / sign);
       let lo = -Infinity, hi = Infinity;
       for (let r = 0; r < m; r++) {
         const v = col[r];

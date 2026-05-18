@@ -4,7 +4,7 @@
 const { useState, useEffect, useRef, useMemo } = React;
 
 function VarName({ name }) {
-  // Render "x_1" as x with subscript 1
+  // Render "x1" (or legacy "x_1" from saved history) as x with subscript 1
   const m = name.match(/^([a-zA-Z]+)_?(\d+)?$/);
   if (m && m[2]) {
     return (
@@ -82,10 +82,10 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
     const n = lp.c.length;
     const usedNames = new Set(lp.varNames);
     let k = n + 1;
-    let newName = `x_${k}`;
+    let newName = `x${k}`;
     while (usedNames.has(newName)) {
       k += 1;
-      newName = `x_${k}`;
+      newName = `x${k}`;
     }
     const bounds = (lp.varBounds || []).slice();
     while (bounds.length < n) bounds.push({ kind: "continuous", ub: Infinity });
@@ -474,8 +474,9 @@ function parseText(text, t) {
 }
 
 function insertSub(v) {
-  const m = v.match(/^([a-zA-Z]+)(\d+)$/);
-  if (m) return `${m[1]}_${m[2]}`;
+  // Variables are stored without underscores (e.g. "x1") — the VarName component
+  // splits the letter prefix from the digit suffix at render time for subscript
+  // formatting. Kept as a no-op for symmetry with legacy callers.
   return v;
 }
 

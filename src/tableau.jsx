@@ -94,6 +94,17 @@ function TableauView({ state, t, verbose, lang }) {
   const pivotRow = preview ? preview.minRow : -1;
   const ratios = preview ? preview.ratios : null;
 
+  // In Phase II the artificials are no longer needed for the algorithm: hide
+  // them from the displayed tableau (they may still linger in the data — kept
+  // only for = constraints so dual recovery still works — but the user sees a
+  // clean tableau without artificial columns).
+  const hideArt = state.phase === 2;
+  const visibleCols = [];
+  for (let j = 0; j < cols - 1; j++) {
+    if (hideArt && colTypes[j] === "artificial") continue;
+    visibleCols.push(j);
+  }
+
   // Which rows are cut rows? Their basis column has colType "cut-gomory" or "cut-cover".
   const cutRowKind = basis.map((b) => {
     const ct = colTypes[b];
@@ -107,7 +118,7 @@ function TableauView({ state, t, verbose, lang }) {
       <table className="tableau">
         <thead>
           <tr>
-            {colLabels.slice(0, cols - 1).map((lbl, j) => (
+            {visibleCols.map((j) => (
               <th
                 key={j}
                 className={[
@@ -118,7 +129,7 @@ function TableauView({ state, t, verbose, lang }) {
                 ].join(" ")}
                 title={tipColHeader(j, colLabels, colTypes, lang)}
               >
-                {lbl}
+                {colLabels[j]}
               </th>
             ))}
             <th className="col-rhs">−z</th>
@@ -133,18 +144,21 @@ function TableauView({ state, t, verbose, lang }) {
         </thead>
         <tbody>
           <tr className="z-row">
-            {T[0].slice(0, cols - 1).map((v, j) => (
-              <td
-                key={j}
-                className={[
-                  Math.abs(v) < 1e-9 ? "zero" : "",
-                  j === pivotCol ? "in-pivot-col" : "",
-                ].join(" ")}
-                title={tipZCell(j, v, colLabels[j], j === pivotCol, lang)}
-              >
-                <Frac value={v} />
-              </td>
-            ))}
+            {visibleCols.map((j) => {
+              const v = T[0][j];
+              return (
+                <td
+                  key={j}
+                  className={[
+                    Math.abs(v) < 1e-9 ? "zero" : "",
+                    j === pivotCol ? "in-pivot-col" : "",
+                  ].join(" ")}
+                  title={tipZCell(j, v, colLabels[j], j === pivotCol, lang)}
+                >
+                  <Frac value={v} />
+                </td>
+              );
+            })}
             <td className="col-rhs" title={tipZRhs(T[0][cols - 1], lang)}>
               <Frac value={T[0][cols - 1]} />
             </td>
@@ -160,7 +174,8 @@ function TableauView({ state, t, verbose, lang }) {
                 cutRowKind[i] === "cut-cover" ? "row-cut row-cut-cover" : "",
               ].join(" ").trim()}
             >
-              {row.slice(0, cols - 1).map((v, j) => {
+              {visibleCols.map((j) => {
+                const v = row[j];
                 const isPivot = i === pivotRow && j === pivotCol;
                 const rowBasisLbl = colLabels[basis[i]];
                 return (

@@ -11,7 +11,7 @@ const DEFAULT_LP = {
   type: "lp",
   objective: "max",
   c: [1, 2],
-  varNames: ["x_1", "x_2"],
+  varNames: ["x1", "x2"],
   constraints: [
     { a: [5, 6], op: "<=", b: 30 },
     { a: [1, -1], op: ">=", b: 1 },

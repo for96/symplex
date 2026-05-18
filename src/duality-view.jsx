@@ -19,7 +19,7 @@ const DUALITY_DEFAULT_LP = {
   type: "lp",
   objective: "max",
   c: [2, 1],
-  varNames: ["x_1", "x_2"],
+  varNames: ["x1", "x2"],
   constraints: [
     { a: [1, 2], op: "<=", b: 14 },
     { a: [2, -1], op: "<=", b: 10 },
@@ -110,7 +110,7 @@ function DualityLPEditor({ lp, setLp, t }) {
   }
   function addVar() {
     const n = lp.c.length;
-    const newVarName = `x_${n + 1}`;
+    const newVarName = `x${n + 1}`;
     setLp({
       ...lp,
       c: [...lp.c, 0],
@@ -475,7 +475,7 @@ function DualityWorkspace({ t }) {
                             const next = knownX.slice(); next[j] = nv;
                             setKnownX(next);
                           }}
-                          ariaLabel={`x_${j + 1}`}
+                          ariaLabel={`x${j + 1}`}
                         />
                         {j < knownX.length - 1 && <span className="sep">,</span>}
                       </React.Fragment>
