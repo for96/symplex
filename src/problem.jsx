@@ -18,12 +18,29 @@ function VarName({ name }) {
 }
 
 function CoefInput({ value, onChange }) {
+  // On mobile, tapping an input usually drops the cursor at the tap position,
+  // making it tedious to overwrite the existing value. We mirror the displayed
+  // text in a local `draft` while the input is focused: focus clears it, so
+  // typing a new number immediately replaces the old. On blur we drop the draft
+  // and snap back to the canonical parent value (so an accidental tap doesn't
+  // destroy data).
+  const [draft, setDraft] = useState(null);
   return (
     <input
       type="number"
       step="any"
-      value={value}
-      onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+      inputMode="decimal"
+      value={draft !== null ? draft : value}
+      onFocus={() => setDraft("")}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        if (raw !== "") {
+          const v = parseFloat(raw);
+          if (!isNaN(v)) onChange(v);
+        }
+      }}
+      onBlur={() => setDraft(null)}
     />
   );
 }
@@ -607,4 +624,5 @@ Object.assign(window, {
   ProblemEditor,
   DualPanel,
   VarName,
+  CoefInput,
 });

@@ -155,6 +155,31 @@ body {
   text-transform: uppercase;
 }
 .app-tools { display: flex; align-items: center; gap: 6px; }
+
+/* Hamburger button — visible only on phones (≤480px) via media query below.
+   On larger screens the header lays everything out inline; on phones we hide
+   the seg controls behind this button to keep the header height predictable. */
+.hamburger-btn {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  min-height: 36px;
+  min-width: 36px;
+}
+.hamburger-btn:hover { border-color: var(--ink); }
+.theme-dark .hamburger-btn { border-color: var(--rule-2); color: var(--ink); }
+
+/* Mobile-only cut actions inside the Tableau section. Hidden on desktop —
+   desktop keeps the original cut-actions row in the header (.cut-actions-desktop).
+   Double-class selector is needed to outrank the base `.cut-actions` declaration
+   which lives later in the file. */
+.cut-actions.cut-actions-mobile { display: none; }
 .app-tools button, .pill-btn {
   background: transparent;
   border: 1px solid var(--rule);
@@ -1740,52 +1765,83 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   }
   .section + .section { margin-top: calc(var(--gap)); }
 
-  /* Header compatto */
+  /* Header compatto. Header lays out as: title block · spacer · hamburger.
+     Tools (lang/theme/rule segs) are collapsed by default and only shown when
+     .menu-open is toggled by the hamburger button. */
   .app-header {
     padding: 10px 12px;
     gap: 8px;
     flex-wrap: wrap;
     row-gap: 8px;
     align-items: center;
+    justify-content: space-between;
   }
   .app-title { font-size: 18px; line-height: 1.2; }
   .app-sub { display: none; }
+
+  .hamburger-btn { display: inline-flex; align-items: center; justify-content: center; }
+
+  /* Collapsed-by-default tools panel. When .menu-open is set on the header we
+     show it as a vertical stack below the title row. */
   .app-tools {
-    gap: 6px;
-    flex-wrap: wrap;
+    display: none;
     width: 100%;
-    justify-content: flex-start;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--rule);
+    margin-top: 4px;
   }
+  .app-header.menu-open .app-tools { display: flex; }
   .app-tools button {
-    padding: 5px 9px;
-    font-size: 11px;
-    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 12px;
+    min-height: 36px;
   }
 
+  /* Cut actions live in the Tableau section on phones, not in the header. */
+  .app-tools .cut-actions-desktop { display: none; }
+  .cut-actions.cut-actions-mobile {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 10px;
+    padding-left: 0;
+    border-left: none;
+  }
+  .cut-actions.cut-actions-mobile .cut-actions-label { width: 100%; }
+
   /* Segmented control (mode toggle, op buttons): più stretto */
-  .seg button { padding: 5px 10px; font-size: 12px; min-height: 32px; }
+  .seg button { padding: 6px 10px; font-size: 12px; min-height: 36px; }
 
   /* Colonne con padding ridotto */
   .col { padding: var(--pad) 10px; }
   .col.center { padding-left: 0; padding-right: 0; }
 
-  /* Constraint / objective rows: label fissa più stretta */
+  /* Constraint / objective rows: column 1 must fit the max/min select widget
+     (native <select> with "max" + dropdown arrow needs ≥48px on mobile). With
+     the previous 32px column the select overflowed onto column 2 and hid `z`. */
   .obj-row, .constr-row {
-    grid-template-columns: 32px minmax(0, 1fr);
+    grid-template-columns: 52px minmax(0, 1fr);
     gap: 6px;
   }
-  .coef-line { gap: 3px; }
-  .coef-term {
-    gap: 3px;
-  }
+  /* Keep the coefficient row on a single line for typical problems so the
+     visual rhythm reads as [ ]x1 + [ ]x2 [op] [ ]. Wraps only when it really
+     can't fit (e.g. 4+ variables on a 320px screen). */
+  .coef-line { gap: 4px; }
+  .coef-term { gap: 3px; }
   .coef-term input[type="number"] { width: 44px; }
+  .coef-plus { padding: 0; }
   .coef-rhs {
     gap: 3px;
-    flex: 1 1 100%;
-    margin-left: 0;
+    flex: 0 0 auto;
+    margin-left: auto;
     justify-content: flex-end;
   }
   .coef-rhs input[type="number"] { width: 48px; }
+  .coef-rhs .op-select { padding: 4px 2px; }
 
   /* Editor head wraps cleanly */
   .editor-head { flex-wrap: wrap; row-gap: 6px; }

@@ -124,6 +124,7 @@ function App() {
   const [appliedCuts, setAppliedCuts] = useStateApp([]);
   const [mode, setMode] = useStateApp(MODES.SIMPLEX);
   const [mobileSection, setMobileSection] = useStateApp(MOBILE_TABS.PROBLEM);
+  const [menuOpen, setMenuOpen] = useStateApp(false);
 
   // Expand variable bounds (kind="binary" → x ≤ 1, finite ub → x ≤ ub) into
   // explicit constraints. The solver and downstream display work on this
@@ -211,15 +212,23 @@ function App() {
       ].join(" ")}
       style={{ display: "flex", flexDirection: "column", height: "100vh" }}
     >
-      <header className="app-header">
+      <header className={"app-header" + (menuOpen ? " menu-open" : "")}>
         <div>
           <h1 className="app-title">
             {t.appTitlePrefix} <em>{t.appTitleEm}</em>
           </h1>
           <span className="app-sub">{t.subtitle}</span>
         </div>
+        <button
+          className="hamburger-btn"
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-label="Menu"
+          aria-expanded={menuOpen}
+        >
+          ☰
+        </button>
         <div className="app-tools">
-          <div className="seg">
+          <div className="seg seg-collapsible">
             <button
               className={tweaks.lang === LANGS.IT ? "active" : ""}
               aria-label={t.ariaLanguageIt}
@@ -237,7 +246,7 @@ function App() {
               EN
             </button>
           </div>
-          <div className="seg">
+          <div className="seg seg-collapsible">
             <button
               className={tweaks.theme === THEMES.LIGHT ? "active" : ""}
               aria-label={t.ariaLightMode}
@@ -281,7 +290,7 @@ function App() {
               <span className="help-link" style={{ marginLeft: 8 }}>
                 {t.methodNote}
               </span>
-              <div className="seg" title={t.pivotRule} role="group" aria-label={t.pivotRule}>
+              <div className="seg seg-collapsible" title={t.pivotRule} role="group" aria-label={t.pivotRule}>
                 <button
                   className={tweaks.rule === PIVOT_RULES.DANTZIG ? "active" : ""}
                   aria-pressed={tweaks.rule === PIVOT_RULES.DANTZIG}
@@ -298,7 +307,7 @@ function App() {
                 </button>
               </div>
               {lp.type === "ilp" && (
-                <div className="cut-actions" role="group" aria-label={t.cuts}>
+                <div className="cut-actions cut-actions-desktop" role="group" aria-label={t.cuts}>
                   <span className="cut-actions-label">{t.cuts}:</span>
                   <button
                     className="pill-btn"
@@ -421,6 +430,27 @@ function App() {
               {t.tableau}
               <StatusPill status={state.status} t={t} />
             </div>
+            {lp.type === "ilp" && (
+              <div className="cut-actions cut-actions-mobile" role="group" aria-label={t.cuts}>
+                <span className="cut-actions-label">{t.cuts}:</span>
+                <button
+                  className="pill-btn"
+                  disabled={!cutAvail.cover}
+                  title={cutAvail.cover ? t.cutCoverDesc : t.cutNone}
+                  onClick={() => handleApplyCut(CUT_KINDS.COVER)}
+                >
+                  + {t.cutsCover}
+                </button>
+                <button
+                  className="pill-btn"
+                  disabled={!cutAvail.gomory}
+                  title={cutAvail.gomory ? t.cutGomoryDesc : t.cutNone}
+                  onClick={() => handleApplyCut(CUT_KINDS.GOMORY)}
+                >
+                  + {t.cutsGomory}
+                </button>
+              </div>
+            )}
             <TableauView state={state} t={t} verbose={tweaks.tableauStyle === TABLEAU_STYLES.VERBOSE} lang={tweaks.lang} />
             <StepBar
               step={step}

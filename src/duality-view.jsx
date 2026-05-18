@@ -1,4 +1,4 @@
-/* global React, Simplex, Duality, VarName */
+/* global React, Simplex, Duality, VarName, CoefInput */
 // Duality workspace — independent from the simplex one.
 // Walks a student through chapter-4-style exercises:
 //   1. enter a primal LP;
@@ -137,13 +137,14 @@ function DualityLPEditor({ lp, setLp, t }) {
           </select>
         </div>
         <div className="coef-line">
-          <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}>z</span>
-          <span>=</span>
+          <span className="coef-z" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}>z =</span>
           {lp.c.map((v, j) => (
             <React.Fragment key={j}>
-              <input type="number" step="any" value={v} onChange={(e) => setC(j, parseFloat(e.target.value) || 0)} />
-              <VarName name={lp.varNames[j]} />
-              {j < lp.c.length - 1 && <span>+</span>}
+              <span className="coef-term">
+                <CoefInput value={v} onChange={(nv) => setC(j, nv)} />
+                <VarName name={lp.varNames[j]} />
+              </span>
+              {j < lp.c.length - 1 && <span className="coef-plus">+</span>}
             </React.Fragment>
           ))}
         </div>
@@ -157,16 +158,20 @@ function DualityLPEditor({ lp, setLp, t }) {
           <div className="coef-line">
             {c.a.map((v, j) => (
               <React.Fragment key={j}>
-                <input type="number" step="any" value={v} onChange={(e) => setA(i, j, parseFloat(e.target.value) || 0)} />
-                <VarName name={lp.varNames[j]} />
-                {j < c.a.length - 1 && <span>+</span>}
+                <span className="coef-term">
+                  <CoefInput value={v} onChange={(nv) => setA(i, j, nv)} />
+                  <VarName name={lp.varNames[j]} />
+                </span>
+                {j < c.a.length - 1 && <span className="coef-plus">+</span>}
               </React.Fragment>
             ))}
-            <select className="op-select" value={c.op} onChange={(e) => setOp(i, e.target.value)}>
-              <option value="<=">≤</option><option value="=">=</option><option value=">=">≥</option>
-            </select>
-            <input type="number" step="any" value={c.b} onChange={(e) => setB(i, parseFloat(e.target.value) || 0)} />
-            <button className="rm-btn" title={t.removeConstraint} aria-label={t.ariaRemoveConstraint} onClick={() => rmConstr(i)}>×</button>
+            <span className="coef-rhs">
+              <select className="op-select" value={c.op} onChange={(e) => setOp(i, e.target.value)}>
+                <option value="<=">≤</option><option value="=">=</option><option value=">=">≥</option>
+              </select>
+              <CoefInput value={c.b} onChange={(nv) => setB(i, nv)} />
+              <button className="rm-btn" title={t.removeConstraint} aria-label={t.ariaRemoveConstraint} onClick={() => rmConstr(i)}>×</button>
+            </span>
           </div>
         </div>
       ))}
