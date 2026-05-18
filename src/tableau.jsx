@@ -40,10 +40,10 @@ function tipZCell(j, v, lbl, isPivot, lang) {
   const it = lang === "it";
   const sign = v < -1e-9 ? (it ? "negativo" : "negative") : v > 1e-9 ? (it ? "positivo" : "positive") : (it ? "zero" : "zero");
   const base = it
-    ? `Costo ridotto z_${lbl} − c_${lbl} = ${Simplex.fmt(v, 3)} (${sign})`
-    : `Reduced cost z_${lbl} − c_${lbl} = ${Simplex.fmt(v, 3)} (${sign})`;
+    ? `Costo ridotto c_${lbl} − z_${lbl} = ${Simplex.fmt(v, 3)} (${sign})`
+    : `Reduced cost c_${lbl} − z_${lbl} = ${Simplex.fmt(v, 3)} (${sign})`;
   if (isPivot) return base + " · " + (it ? "scelta come variabile entrante" : "chosen as entering variable");
-  if (v < -1e-9) return base + " · " + (it ? "candidata all'ingresso (max)" : "candidate to enter (max)");
+  if (v > 1e-9) return base + " · " + (it ? "candidata all'ingresso (max)" : "candidate to enter (max)");
   return base;
 }
 function tipBodyCell(i, j, v, rowBasisLbl, colLbl, isPivotCell, isPivotRow, isPivotCol, lang) {

@@ -24,14 +24,21 @@
     });
   }
 
+  // Convenzione −z (Marinelli, slide 38–41): la riga obiettivo memorizza
+  //   [ 0_basiche | (c_N − c_B^T B⁻¹ N) | − c_B^T B⁻¹ b ]
+  // cioè i costi ridotti c_j − z_j (positivi = candidati a entrare; tutti ≤ 0
+  // ⇒ ottimo) e, in colonna RHS, il valore della f.o. cambiato di segno.
   function computeZRow(constraintRows, basis, phaseObj, totalCols) {
     const m = basis.length;
     const z = new Array(totalCols).fill(0);
     for (let j = 0; j < totalCols; j++) {
       let zj = 0;
       for (let i = 0; i < m; i++) zj += phaseObj[basis[i]] * constraintRows[i][j];
-      const cj = j < totalCols - 1 ? phaseObj[j] : 0;
-      z[j] = zj - cj;
+      if (j < totalCols - 1) {
+        z[j] = phaseObj[j] - zj;           // c_j − z_j
+      } else {
+        z[j] = -zj;                         // −c_B^T b̄  (= −z)
+      }
     }
     return z;
   }
@@ -171,23 +178,25 @@
     };
   }
 
+  // Nella convenzione −z, la z-row contiene i costi ridotti c_j − z_j: si entra
+  // dove sono POSITIVI (ottimalità: tutti ≤ 0).
   function findEnteringCol(state) {
     const { T, colTypes, phase, rule } = state;
     const cols = T[0].length;
     if (rule === "bland") {
       for (let j = 0; j < cols - 1; j++) {
         if (phase === 2 && colTypes[j] === "artificial") continue;
-        if (T[0][j] < -EPS) return j;
+        if (T[0][j] > EPS) return j;
       }
       return -1;
     }
-    // Dantzig (most negative reduced cost)
+    // Dantzig: costo ridotto massimo positivo
     let pivotCol = -1;
-    let minVal = -EPS;
+    let maxVal = EPS;
     for (let j = 0; j < cols - 1; j++) {
       if (phase === 2 && colTypes[j] === "artificial") continue;
-      if (T[0][j] < minVal) {
-        minVal = T[0][j];
+      if (T[0][j] > maxVal) {
+        maxVal = T[0][j];
         pivotCol = j;
       }
     }
@@ -357,10 +366,11 @@
     if (pivotCol === -1) {
       // Optimal for this phase
       if (phase === 1) {
-        const phase1Obj = T[0][cols - 1];
-        // Why: phase 1 maximizes −Σ(artificials); optimum is 0 iff feasible.
-        // 1e-6 (looser than EPS) absorbs the rounding accumulated across pivots.
-        if (phase1Obj < -1e-6) {
+        // In convenzione −z, RHS = −w. Fase 1 ammissibile ⇔ w = 0 ⇔ RHS = 0.
+        // Inammissibilità ⇔ w < 0 (artificiali non azzerate) ⇔ RHS > 0.
+        // 1e-6 (più lasco di EPS) assorbe l'errore cumulato di arrotondamento.
+        const phase1RHS = T[0][cols - 1];
+        if (phase1RHS > 1e-6) {
           return { ...state, status: "infeasible", note: "phase1-infeasible" };
         }
         return transitionToPhase2(state);
@@ -453,10 +463,10 @@
   }
 
   function dualValues(state) {
-    // y_i* = z-row entry of starter col (for max-internal); sign-flip if primal was min.
-    // Iterate over original constraints only — after cuts, m grows but starterCol doesn't.
-    // After Phase I cleanup the starter for a >= constraint becomes the slack column
-    // (initial coef -1), so starterSign[i] tracks the sign flip needed.
+    // Convenzione −z: T[0][starter] = c_starter − z_starter = 0 − y_i = −y_i
+    // (per starter di tipo slack/artificiale con costo originale 0). Quindi
+    // y_i = −T[0][starter] / starterSign[i].  Per problemi di min, c'è un
+    // ulteriore flip di segno (internamente massimizziamo −c).
     const { T, starterCol, starterSign, isMin } = state;
     const origM = starterCol ? starterCol.length : 0;
     const y = new Array(origM).fill(0);
@@ -464,7 +474,7 @@
       const colIdx = starterCol[i];
       if (colIdx == null || colIdx < 0) continue;
       const sign = starterSign ? (starterSign[i] || 1) : 1;
-      const v = T[0][colIdx] / sign;
+      const v = -T[0][colIdx] / sign;
       y[i] = isMin ? -v : v;
     }
     return y;
@@ -478,8 +488,10 @@
       for (let j = 0; j < state.n; j++) z += state.cOrig[j] * x[j];
       return z;
     }
+    // Convenzione −z: T[0][RHS] = −z (max interno). Per min, l'utente vede
+    // c_min = −c_internal_max, quindi serve un ulteriore flip.
     const cols = state.T[0].length;
-    let z = state.T[0][cols - 1];
+    let z = -state.T[0][cols - 1];
     if (state.isMin) z = -z;
     return z;
   }
@@ -614,24 +626,28 @@
     for (let j = 0; j < n; j++) {
       const r = basis.indexOf(j);
       if (r === -1) {
-        // Non-basic: for max, c_j can fall to −∞ (stays non-basic) and rise up to
-        // current + margin (where margin = z_j − c_j ≥ 0). For min we internally
-        // maximize −c_min, so the user-facing range flips: c_min can rise to +∞
-        // and fall down to current − margin, i.e. Δc_min ∈ [−margin, +∞).
-        const margin = T[0][j];
+        // Non basica. In convenzione −z, T[0][j] = c_j − z_j ≤ 0 ed |T[0][j]|
+        // è il margine: per max c_j può scendere a −∞ e salire fino a c_j +
+        // |margine|, cioè Δ ∈ (−∞, −margine]. Per min, c interno = −c_min,
+        // quindi Δc_min = −Δc_internal ∈ [margine, +∞).
+        const margin = T[0][j]; // ≤ 0
         costRanges.push({
-          low: isMin ? -margin : -Infinity,
-          high: isMin ? Infinity : margin,
+          low: isMin ? margin : -Infinity,
+          high: isMin ? Infinity : -margin,
         });
       } else {
+        // Basica al riga r. Cambio c_j ⇒ T[0][q] varia di −Δ·a_rq. Per restare
+        // ottimi (T[0][q] ≤ 0 ∀ q non basica): Δ·a_rq ≥ T[0][q].
+        //   a_rq > 0 ⇒ Δ ≥ T[0][q]/a_rq   (bound inferiore)
+        //   a_rq < 0 ⇒ Δ ≤ T[0][q]/a_rq   (bound superiore)
         let lo = -Infinity, hi = Infinity;
         for (let q = 0; q < dataCols; q++) {
           if (basis.indexOf(q) !== -1) continue;
           if (colTypes[q] === "artificial") continue;
           const arq = T[r + 1][q];
           const zq = T[0][q];
-          if (arq > EPS) hi = Math.min(hi, zq / arq);
-          else if (arq < -EPS) lo = Math.max(lo, zq / arq);
+          if (arq > EPS) lo = Math.max(lo, zq / arq);
+          else if (arq < -EPS) hi = Math.min(hi, zq / arq);
         }
         costRanges.push({ low: isMin ? -hi : lo, high: isMin ? -lo : hi });
       }
@@ -718,10 +734,11 @@
     return mostFractionalIntegerVar(state, lp) === -1;
   }
 
-  // ---------- Dual simplex ----------
-  // Used after a cut has been added: the cut row introduces a negative RHS
-  // (primal-infeasible) while the z-row stays ≥ 0 (dual-feasible). Dual simplex
-  // pivots back to a feasible+optimal state.
+  // ---------- Simplesso duale ----------
+  // In convenzione −z la riga z contiene c_j − z_j ≤ 0 (duale-ammissibile).
+  // Dopo un taglio il RHS della nuova riga è < 0 (primale-inammissibile).
+  // Leaving: riga con RHS più negativo. Entering: colonna j con a_rj < 0 che
+  // minimizza |c_j − z_j| / |a_rj| = T[0][j] / a_rj  (entrambi ≤ 0 ⇒ rapporto ≥ 0).
   function dualSimplexStep(state) {
     const { T, basis, m, colTypes } = state;
     const cols = T[0].length;
@@ -736,14 +753,14 @@
       return { ...state, status: "optimal", note: "optimal", pivot: null };
     }
 
-    // Entering: column j with a_rj < 0, minimum |z_j / a_rj|
+    // Entering: column j con a_rj < 0, minimo T[0][j]/a_rj (ratio positivo)
     let enterCol = -1, minRatio = Infinity;
     for (let j = 0; j < cols - 1; j++) {
       if (colTypes[j] === "artificial") continue;
       const arj = T[leavingRow + 1][j];
       if (arj < -1e-9) {
-        const zj = T[0][j];
-        const r = zj / -arj;
+        const zj = T[0][j]; // ≤ 0
+        const r = zj / arj; // (≤0)/(<0) ≥ 0
         if (r < minRatio - 1e-9) {
           minRatio = r;
           enterCol = j;
