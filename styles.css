@@ -332,6 +332,8 @@ body {
   border-right: 1px solid var(--rule);
   min-height: 0;
   min-width: 0;
+  background: var(--bg);
+  color: var(--ink);
 }
 .col:last-child { border-right: none; }
 .col.center {
