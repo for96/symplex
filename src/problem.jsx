@@ -45,6 +45,33 @@ function CoefInput({ value, onChange }) {
   );
 }
 
+// Same tap-to-clear behaviour for the upper-bound field. It's a text input
+// (accepts "∞" / "inf" / empty for Infinity), so we can't reuse CoefInput.
+function VbUbInput({ value, isBinary, onChange }) {
+  const [draft, setDraft] = useState(null);
+  const formatted = isBinary ? "1" : (isFinite(value) ? String(value) : "∞");
+  return (
+    <input
+      type="text"
+      className="vb-ub"
+      value={draft !== null ? draft : formatted}
+      onFocus={() => setDraft("")}
+      onChange={(e) => {
+        const v = e.target.value;
+        setDraft(v);
+        if (v === "" || v === "∞" || v.toLowerCase() === "inf") onChange(Infinity);
+        else {
+          const n = parseFloat(v);
+          if (!isNaN(n)) onChange(n);
+        }
+      }}
+      onBlur={() => setDraft(null)}
+      disabled={isBinary}
+      aria-label="upper bound"
+    />
+  );
+}
+
 function ensureLPBounds(lp) {
   const bounds = (lp.varBounds || []).slice();
   while (bounds.length < lp.c.length) bounds.push({ kind: "continuous", ub: Infinity });
@@ -328,20 +355,10 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
               </select>
               <span className="vb-bound-pair">
                 <span className="vb-mono">0 ≤ {lp.varNames[j].replace("_", "")} ≤</span>
-                <input
-                  type="text"
-                  className="vb-ub"
-                  value={isBinary ? "1" : (isFinite(b.ub) ? b.ub : "∞")}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "" || v === "∞" || v.toLowerCase() === "inf") setVarUb(j, Infinity);
-                    else {
-                      const n = parseFloat(v);
-                      if (!isNaN(n)) setVarUb(j, n);
-                    }
-                  }}
-                  disabled={isBinary}
-                  aria-label={t.upperBound}
+                <VbUbInput
+                  value={b.ub}
+                  isBinary={isBinary}
+                  onChange={(nv) => setVarUb(j, nv)}
                 />
               </span>
               {lp.c.length > 1 && (

@@ -60,9 +60,12 @@ function parseFracInput(s) {
 
 function FracInput({ value, onChange, ariaLabel }) {
   const [text, setText] = useStateD(() => formatFracInput(value));
+  const [focused, setFocused] = useStateD(false);
+  // While focused, keep the user's typed draft; otherwise mirror the canonical
+  // value so external updates (size sync, parent re-renders) are reflected.
   useEffectD(() => {
-    setText(formatFracInput(value));
-  }, [value]);
+    if (!focused) setText(formatFracInput(value));
+  }, [value, focused]);
   function commit(s) {
     setText(s);
     const v = parseFracInput(s);
@@ -73,7 +76,9 @@ function FracInput({ value, onChange, ariaLabel }) {
       type="text"
       className="frac-input"
       value={text}
+      onFocus={() => { setFocused(true); setText(""); }}
       onChange={(e) => commit(e.target.value)}
+      onBlur={() => { setFocused(false); setText(formatFracInput(value)); }}
       aria-label={ariaLabel || ""}
     />
   );

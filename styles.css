@@ -33,25 +33,27 @@
 
 /* Dark mode — warm carbon / chalk.
    Clear elevation hierarchy: bg (page, darkest) < bg-2 (sections) < bg-paper (lifted surfaces).
-   Higher rule contrast and a warmer chalk for body text to keep the editorial feel. */
+   Higher rule contrast and a warmer chalk for body text to keep the editorial feel.
+   Highlight colors are intentionally a notch less saturated than light mode so they
+   read as editorial pencil-marks rather than neon against carbon. */
 .theme-dark {
   --bg: #131210;
   --bg-2: #1d1c19;
   --bg-paper: #25231f;
-  --ink: #f0e9d8;
-  --ink-2: #c5bda9;
-  --ink-3: #8a836f;
+  --ink: #f2ebda;
+  --ink-2: #cbc3af;
+  --ink-3: #a89f88;
   --rule: #3a352c;
-  --rule-2: #524b3f;
-  --accent: oklch(76% 0.16 32);
-  --accent-2: oklch(75% 0.11 195);
-  --accent-soft: oklch(76% 0.16 32 / 0.18);
-  --accent-2-soft: oklch(75% 0.11 195 / 0.20);
-  --feasible: oklch(76% 0.16 32 / 0.14);
-  --feasible-stroke: oklch(76% 0.16 32 / 0.6);
-  --slack: #a89c83;
-  --artificial: oklch(78% 0.14 320);
-  --warn: oklch(78% 0.16 65);
+  --rule-2: #5a5246;
+  --accent: oklch(74% 0.12 32);
+  --accent-2: oklch(74% 0.08 195);
+  --accent-soft: oklch(74% 0.12 32 / 0.20);
+  --accent-2-soft: oklch(74% 0.08 195 / 0.22);
+  --feasible: oklch(74% 0.12 32 / 0.16);
+  --feasible-stroke: oklch(74% 0.12 32 / 0.6);
+  --slack: oklch(78% 0.05 80);
+  --artificial: oklch(76% 0.09 320);
+  --warn: oklch(78% 0.13 65);
   --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 .theme-dark body { background: var(--bg); color: var(--ink); }
@@ -404,11 +406,21 @@ body {
   align-items: center;
   margin-bottom: 8px;
 }
-.obj-row, .constr-row {
+.obj-row {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
+  margin-bottom: 6px;
+}
+/* Constraint rows: no label column, so collapse it to 0. This pulls the
+   coefficient line flush to the left edge (the previous 56px gap looked like
+   dead space, since the placeholder div is empty). */
+.constr-row {
+  display: grid;
+  grid-template-columns: 0 minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
   margin-bottom: 6px;
 }
 .obj-label, .sub-label {
@@ -470,15 +482,15 @@ body {
   padding-right: 2px;
 }
 
-/* RHS group: pushed to the right edge of the row via margin-left:auto so the
-   row visually spans the column width while inputs remain compact.
-   Wraps to its own line on narrow rows; the auto margin still right-aligns it. */
+/* RHS group: stays inline next to the last coefficient term. Previously this
+   row had margin-left:auto to push it to the far right, but that left an
+   awkward gap between the last term and the operator. Keeping it flush makes
+   the constraint read like a single expression. */
 .coef-rhs {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
-  margin-left: auto;
 }
 .coef-rhs input[type="number"] {
   width: 52px;
@@ -1377,6 +1389,15 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
 .theme-dark .tableau tr.row-cut-cover td {
   background: color-mix(in oklch, var(--accent-2-soft) 70%, var(--bg-paper));
 }
+/* Zero-cells were fading to ~3:1 contrast in dark mode (ink-3 * 0.7 alpha on
+   bg-paper). Drop the extra alpha — the muted color alone is enough cue. */
+.theme-dark .tableau td.zero { opacity: 1; }
+/* Inactive tag: ink-3 on bg-2 was indistinguishable in dark. Bump the bg so
+   the chip silhouette stays visible without competing with active/eq tags. */
+.theme-dark .dy-tag.inactive {
+  color: var(--ink-2);
+  background: color-mix(in oklch, var(--ink-3) 14%, var(--bg-paper));
+}
 .theme-dark .cut-item.cut-cover { border-left-color: var(--accent-2); }
 .theme-dark .cut-item.cut-gomory { border-left-color: var(--artificial); }
 .theme-dark .geom-overlay {
@@ -1820,12 +1841,21 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   .col { padding: var(--pad) 10px; }
   .col.center { padding-left: 0; padding-right: 0; }
 
-  /* Constraint / objective rows: column 1 must fit the max/min select widget
-     (native <select> with "max" + dropdown arrow needs ≥48px on mobile). With
-     the previous 32px column the select overflowed onto column 2 and hid `z`. */
-  .obj-row, .constr-row {
+  /* Objective row: column 1 must fit the max/min select widget (native
+     <select> with "max" + dropdown arrow needs ≥48px on mobile). */
+  .obj-row {
     grid-template-columns: 52px minmax(0, 1fr);
     gap: 6px;
+  }
+  /* Constraint rows stay collapsed (matches the desktop rule above). */
+  .constr-row {
+    grid-template-columns: 0 minmax(0, 1fr);
+    gap: 0;
+  }
+  /* "soggetto a" label: span the full row so it never wraps to two lines. */
+  .obj-row .sub-label {
+    grid-column: 1 / -1;
+    white-space: nowrap;
   }
   /* Keep the coefficient row on a single line for typical problems so the
      visual rhythm reads as [ ]x1 + [ ]x2 [op] [ ]. Wraps only when it really
@@ -1837,8 +1867,6 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   .coef-rhs {
     gap: 3px;
     flex: 0 0 auto;
-    margin-left: auto;
-    justify-content: flex-end;
   }
   .coef-rhs input[type="number"] { width: 48px; }
   .coef-rhs .op-select { padding: 4px 2px; }
