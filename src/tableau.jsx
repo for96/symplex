@@ -36,14 +36,16 @@ function tipColHeader(j, colLabels, colTypes, lang) {
   if (type === "cut-cover") return it ? `Slack del taglio cover ${lbl}` : `Cover cut slack ${lbl}`;
   return lbl;
 }
-function tipZCell(j, v, lbl, isPivot, lang) {
+function tipZCell(j, v, lbl, isPivot, lang, phase) {
   const it = lang === "it";
+  const minPhase = phase === 1;
   const sign = v < -1e-9 ? (it ? "negativo" : "negative") : v > 1e-9 ? (it ? "positivo" : "positive") : (it ? "zero" : "zero");
   const base = it
     ? `Costo ridotto c_${lbl} − z_${lbl} = ${Simplex.fmt(v, 3)} (${sign})`
     : `Reduced cost c_${lbl} − z_${lbl} = ${Simplex.fmt(v, 3)} (${sign})`;
   if (isPivot) return base + " · " + (it ? "scelta come variabile entrante" : "chosen as entering variable");
-  if (v > 1e-9) return base + " · " + (it ? "candidata all'ingresso (max)" : "candidate to enter (max)");
+  if (minPhase && v < -1e-9) return base + " · " + (it ? "candidata all'ingresso (min w)" : "candidate to enter (min w)");
+  if (!minPhase && v > 1e-9) return base + " · " + (it ? "candidata all'ingresso (max)" : "candidate to enter (max)");
   return base;
 }
 function tipBodyCell(i, j, v, rowBasisLbl, colLbl, isPivotCell, isPivotRow, isPivotCol, lang) {
@@ -62,11 +64,16 @@ function tipRhsCell(v, rowBasisLbl, lang) {
     ? `Valore corrente di ${rowBasisLbl} nella base: b̄ = ${Simplex.fmt(v, 3)}`
     : `Current value of ${rowBasisLbl} in basis: b̄ = ${Simplex.fmt(v, 3)}`;
 }
-function tipZRhs(v, lang) {
+function tipZRhs(v, lang, phase) {
   const it = lang === "it";
+  if (phase === 1) {
+    return it
+      ? `Valore corrente di −w = ${Simplex.fmt(v, 3)} (w = ${Simplex.fmt(-v, 3)})`
+      : `Current value of −w = ${Simplex.fmt(v, 3)} (w = ${Simplex.fmt(-v, 3)})`;
+  }
   return it
-    ? `Valore corrente dell'obiettivo z = ${Simplex.fmt(v, 3)}`
-    : `Current objective value z = ${Simplex.fmt(v, 3)}`;
+    ? `Valore corrente di −z = ${Simplex.fmt(v, 3)} (z = ${Simplex.fmt(-v, 3)})`
+    : `Current value of −z = ${Simplex.fmt(v, 3)} (z = ${Simplex.fmt(-v, 3)})`;
 }
 function tipRatio(r, lang) {
   if (r == null) return "";
@@ -132,7 +139,7 @@ function TableauView({ state, t, verbose, lang }) {
                 {colLabels[j]}
               </th>
             ))}
-            <th className="col-rhs">−z</th>
+            <th className="col-rhs">{state.phase === 1 ? "−w" : "−z"}</th>
             <th className="col-basis">base</th>
             {preview && (
               <th className="col-ratio">
@@ -153,13 +160,13 @@ function TableauView({ state, t, verbose, lang }) {
                     Math.abs(v) < 1e-9 ? "zero" : "",
                     j === pivotCol ? "in-pivot-col" : "",
                   ].join(" ")}
-                  title={tipZCell(j, v, colLabels[j], j === pivotCol, lang)}
+                  title={tipZCell(j, v, colLabels[j], j === pivotCol, lang, state.phase)}
                 >
                   <Frac value={v} />
                 </td>
               );
             })}
-            <td className="col-rhs" title={tipZRhs(T[0][cols - 1], lang)}>
+            <td className="col-rhs" title={tipZRhs(T[0][cols - 1], lang, state.phase)}>
               <Frac value={T[0][cols - 1]} />
             </td>
             <td className="col-basis" title={lang === "it" ? "Riga della funzione obiettivo (costi ridotti)" : "Objective row (reduced costs)"}>z</td>

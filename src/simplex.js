@@ -26,8 +26,12 @@
 
   // Convenzione −z (Marinelli, slide 38–41): la riga obiettivo memorizza
   //   [ 0_basiche | (c_N − c_B^T B⁻¹ N) | − c_B^T B⁻¹ b ]
-  // cioè i costi ridotti c_j − z_j (positivi = candidati a entrare; tutti ≤ 0
-  // ⇒ ottimo) e, in colonna RHS, il valore della f.o. cambiato di segno.
+  // cioè i costi ridotti c_j − z_j e, in colonna RHS, il valore della f.o.
+  // cambiato di segno.
+  //   - Fase I (min w): tutti c_j − z_j ≥ 0 ⇒ ottimo; negativi = candidati;
+  //     RHS = −w, negativo se ammissibile (w > 0), zero quando w = 0.
+  //   - Fase II per problema MAX (max-interno): tutti c_j − z_j ≤ 0 ⇒ ottimo;
+  //     positivi = candidati; RHS = −z.
   function computeZRow(constraintRows, basis, phaseObj, totalCols) {
     const m = basis.length;
     const z = new Array(totalCols).fill(0);
@@ -139,8 +143,11 @@
     const phase = hasArt ? 1 : 2;
     const phaseObj = new Array(dataCols).fill(0);
     if (phase === 1) {
-      // Phase 1: maximize -(sum of artificials)  =>  c_a = -1, rest 0
-      for (let j = artStart; j < dataCols; j++) phaseObj[j] = -1;
+      // Phase 1 (Marinelli, slide 49–52): min w = somma delle artificiali.
+      // c_a = +1, resto 0. La z-row mostra c_j − z_j con la convenzione min:
+      // negativi = candidati, ottimo quando tutti ≥ 0; RHS = −w (negativo se
+      // ci sono artificiali non azzerate, zero a fase I conclusa con successo).
+      for (let j = artStart; j < dataCols; j++) phaseObj[j] = 1;
     } else {
       for (let j = 0; j < dataCols; j++) phaseObj[j] = cFull[j];
     }
@@ -178,26 +185,41 @@
     };
   }
 
-  // Nella convenzione −z, la z-row contiene i costi ridotti c_j − z_j: si entra
-  // dove sono POSITIVI (ottimalità: tutti ≤ 0).
+  // Selezione della variabile entrante (regola di pivoting):
+  //   - Fase I (min w): cerco c_j − z_j NEGATIVO (Bland: primo; Dantzig: più
+  //     piccolo). Ottimo quando tutti ≥ 0.
+  //   - Fase II (max interno): cerco c_j − z_j POSITIVO. Ottimo quando ≤ 0.
+  // Le artificiali non sono mai candidate in fase II (rimangono escluse per
+  // non rientrare in base).
   function findEnteringCol(state) {
     const { T, colTypes, phase, rule } = state;
     const cols = T[0].length;
+    const minPhase = phase === 1;
     if (rule === "bland") {
       for (let j = 0; j < cols - 1; j++) {
         if (phase === 2 && colTypes[j] === "artificial") continue;
-        if (T[0][j] > EPS) return j;
+        if (minPhase ? T[0][j] < -EPS : T[0][j] > EPS) return j;
       }
       return -1;
     }
-    // Dantzig: costo ridotto massimo positivo
+    // Dantzig: costo ridotto più "estremo" nella direzione di miglioramento.
     let pivotCol = -1;
-    let maxVal = EPS;
-    for (let j = 0; j < cols - 1; j++) {
-      if (phase === 2 && colTypes[j] === "artificial") continue;
-      if (T[0][j] > maxVal) {
-        maxVal = T[0][j];
-        pivotCol = j;
+    if (minPhase) {
+      let minVal = -EPS;
+      for (let j = 0; j < cols - 1; j++) {
+        if (T[0][j] < minVal) {
+          minVal = T[0][j];
+          pivotCol = j;
+        }
+      }
+    } else {
+      let maxVal = EPS;
+      for (let j = 0; j < cols - 1; j++) {
+        if (colTypes[j] === "artificial") continue;
+        if (T[0][j] > maxVal) {
+          maxVal = T[0][j];
+          pivotCol = j;
+        }
       }
     }
     return pivotCol;
@@ -366,11 +388,11 @@
     if (pivotCol === -1) {
       // Optimal for this phase
       if (phase === 1) {
-        // In convenzione −z, RHS = −w. Fase 1 ammissibile ⇔ w = 0 ⇔ RHS = 0.
-        // Inammissibilità ⇔ w < 0 (artificiali non azzerate) ⇔ RHS > 0.
+        // Convenzione min: RHS = −w. Fase I ammissibile ⇔ w = 0 ⇔ RHS = 0.
+        // Inammissibilità ⇔ w > 0 (artificiali non azzerate) ⇔ RHS < 0.
         // 1e-6 (più lasco di EPS) assorbe l'errore cumulato di arrotondamento.
         const phase1RHS = T[0][cols - 1];
-        if (phase1RHS > 1e-6) {
+        if (phase1RHS < -1e-6) {
           return { ...state, status: "infeasible", note: "phase1-infeasible" };
         }
         return transitionToPhase2(state);

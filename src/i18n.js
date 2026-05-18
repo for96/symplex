@@ -93,7 +93,7 @@
       narrationPhase2: "Fine Fase I. Si ricalcola la z-row con l'obiettivo originale e si avvia la Fase II.",
       narrationPivot: (en, lv) =>
         `Variabile entrante ${en}, uscente ${lv}. Eseguito il pivot.`,
-      narrationOptimal: "Tutti i costi ridotti ≥ 0. Soluzione ottima raggiunta.",
+      narrationOptimal: "Tutti i costi ridotti ≤ 0. Soluzione ottima raggiunta.",
       narrationUnbounded: "Nessun vincolo limita la variabile entrante: problema illimitato.",
       narrationInfeasible: "Artificiali residue positive: problema non ammissibile.",
       narrationCutAdded: (kind, lbl) =>
@@ -306,7 +306,7 @@
       narrationPhase2: "Phase I done. Recompute z-row with the original objective and start Phase II.",
       narrationPivot: (en, lv) =>
         `Entering ${en}, leaving ${lv}. Pivot performed.`,
-      narrationOptimal: "All reduced costs ≥ 0. Optimal solution reached.",
+      narrationOptimal: "All reduced costs ≤ 0. Optimal solution reached.",
       narrationUnbounded: "No constraint bounds the entering variable: unbounded.",
       narrationInfeasible: "Artificials remain positive: infeasible.",
       narrationCutAdded: (kind, lbl) =>
