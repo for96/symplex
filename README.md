@@ -1,8 +1,8 @@
 # Simplesso — Simulatore di Ricerca Operativa
 
-Webapp didattica per il corso di Ricerca Operativa: algoritmo del **simplesso** a due fasi, **tagli di Gomory** e di **copertura** per problemi interi, **analisi di sensitività** e **dualità** (cap. 4 dell'eserciziario).
+Webapp didattica per il corso di Ricerca Operativa: algoritmo del **simplesso** a due fasi, **tagli di Gomory** e di **copertura** per problemi interi, **analisi di sensitività** e **dualità**.
 
-Niente backend, nessun database — tutto gira nel browser. React 18 caricato da CDN, JSX pre-compilato via esbuild in un singolo bundle.
+Gira tutto nel browser in localStorage. React 18 caricato da CDN, JSX pre-compilato via esbuild in un singolo bundle.
 
 ## Funzionalità
 
@@ -59,6 +59,9 @@ src/
   duality-view.jsx      # Workspace dualità (cap. 4)
   tweaks-panel.jsx      # Pannello sviluppatore (palette, densità, tema)
 ```
+
+### 📋 Todo
+- [ ] Aggiungere i vincoli sulle variabili primali nel selettore problema Primale in **Dualità** 
 
 ## Crediti
 
