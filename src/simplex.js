@@ -555,7 +555,16 @@
     const dualConstraints = [];
     for (let j = 0; j < n; j++) {
       const a = lp.constraints.map((c) => c.a[j]);
-      dualConstraints.push({ a, op: isMin ? "<=" : ">=", b: lp.c[j] });
+      let op;
+      const sign = lp.varSigns ? lp.varSigns[j] : ">= 0";
+      if (sign === "free") {
+        op = "=";
+      } else if (sign === "<= 0") {
+        op = isMin ? ">=" : "<=";
+      } else {
+        op = isMin ? "<=" : ">=";
+      }
+      dualConstraints.push({ a, op, b: lp.c[j] });
     }
     const dualVarSigns = lp.constraints.map((c) => {
       if (c.op === "=") return "free";
@@ -735,23 +744,24 @@
 
   function fractionalPart(v) {
     const f = v - Math.floor(v);
+    if (f < 1e-9 || f > 1 - 1e-9) return 0;
     return f;
   }
 
   // Returns the index of the most-fractional integer-required basic decision
   // variable, or -1 if all integer-required vars are already integer.
+  // Following the professor's slides, we choose the variable with the maximum fractional part.
   function mostFractionalIntegerVar(state, lp) {
     if (state.status !== "optimal") return -1;
     const sol = currentSolution(state);
-    let bestJ = -1, bestDist = 0;
+    let bestJ = -1, bestFrac = 0;
     for (let j = 0; j < lp.c.length; j++) {
       if (!isIntegerVar(lp, j)) continue;
       const name = state.colLabels[j];
       const v = sol[name] || 0;
       const f = fractionalPart(v);
-      const dist = Math.min(f, 1 - f);
-      if (dist > 1e-7 && dist > bestDist) {
-        bestDist = dist;
+      if (f > 1e-9 && f > bestFrac) {
+        bestFrac = f;
         bestJ = j;
       }
     }
@@ -853,13 +863,13 @@
     const dataCols = cols - 1;
     const sourceRow = T[basicRow + 1];
 
-    const f_b = sourceRow[cols - 1] - Math.floor(sourceRow[cols - 1]);
+    const f_b = fractionalPart(sourceRow[cols - 1]);
     const f_coefs = new Array(dataCols).fill(0);
     for (let q = 0; q < dataCols; q++) {
       // Skip artificials (they should be 0 at optimum and shouldn't re-enter)
       if (state.colTypes[q] === "artificial") continue;
       const aij = sourceRow[q];
-      f_coefs[q] = aij - Math.floor(aij);
+      f_coefs[q] = fractionalPart(aij);
     }
 
     return {

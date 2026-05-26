@@ -25,6 +25,7 @@ const DUALITY_DEFAULT_LP = {
     { a: [2, -1], op: "<=", b: 10 },
     { a: [1, -1], op: "<=", b: 3 },
   ],
+  varSigns: [">= 0", ">= 0"],
 };
 
 // Default known x* for the default LP: (20/3, 11/3).
@@ -116,22 +117,27 @@ function DualityLPEditor({ lp, setLp, t }) {
   function addVar() {
     const n = lp.c.length;
     const newVarName = `x${n + 1}`;
+    const varSigns = lp.varSigns ? [...lp.varSigns, ">= 0"] : new Array(n + 1).fill(">= 0");
     setLp({
       ...lp,
       c: [...lp.c, 0],
       varNames: [...lp.varNames, newVarName],
       constraints: lp.constraints.map((c) => ({ ...c, a: [...c.a, 0] })),
+      varSigns,
     });
   }
   function rmVar() {
     if (lp.c.length <= 1) return;
+    const varSigns = lp.varSigns ? lp.varSigns.slice(0, -1) : new Array(lp.c.length - 1).fill(">= 0");
     setLp({
       ...lp,
       c: lp.c.slice(0, -1),
       varNames: lp.varNames.slice(0, -1),
       constraints: lp.constraints.map((c) => ({ ...c, a: c.a.slice(0, -1) })),
+      varSigns,
     });
   }
+  const freeLabel = (t.subjectTo === "soggetto a") ? "libera" : "free";
   return (
     <div className="dy-editor">
       <div className="obj-row">
@@ -180,7 +186,33 @@ function DualityLPEditor({ lp, setLp, t }) {
           </div>
         </div>
       ))}
-      <div className="editor-actions">
+      <div className="var-signs-row" style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, borderTop: "1px solid var(--border-color)", paddingTop: 10 }}>
+        <span style={{ color: "var(--ink-2)" }}>{t.varBoundsSection}:</span>
+        {lp.c.map((_, j) => {
+          const sign = lp.varSigns ? lp.varSigns[j] : ">= 0";
+          return (
+            <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <VarName name={lp.varNames[j]} />
+              <select
+                className="op-select"
+                style={{ padding: "1px 4px", fontSize: 12 }}
+                value={sign}
+                onChange={(e) => {
+                  const varSigns = (lp.varSigns || new Array(lp.c.length).fill(">= 0")).slice();
+                  while (varSigns.length < lp.c.length) varSigns.push(">= 0");
+                  varSigns[j] = e.target.value;
+                  setLp({ ...lp, varSigns });
+                }}
+              >
+                <option value=">= 0">≥ 0</option>
+                <option value="<= 0">≤ 0</option>
+                <option value="free">{freeLabel}</option>
+              </select>
+            </span>
+          );
+        })}
+      </div>
+      <div className="editor-actions" style={{ marginTop: 12 }}>
         <button className="pill-btn" onClick={addConstr}>{t.addConstraint}</button>
         <button className="pill-btn" onClick={addVar} title={t.addVariable}>+ {t.variables.toLowerCase()}</button>
         {lp.c.length > 1 && (
@@ -266,7 +298,7 @@ function FeasibilityRow({ feasible, issues, t, lp, dual, isDual }) {
                 <span>{(isDual ? "y" : "x")}<sub>{iss.index + 1}</sub> = {Simplex.fmt(iss.value, 3)} {"< 0"}</span>
               )}
               {iss.kind === "wrong-sign" && (
-                <span>y<sub>{iss.index + 1}</sub> = {Simplex.fmt(iss.value, 3)} ({t.dyShouldBe} {iss.sign})</span>
+                <span>{(isDual ? "y" : "x")}<sub>{iss.index + 1}</sub> = {Simplex.fmt(iss.value, 3)} ({t.dyShouldBe} {iss.sign})</span>
               )}
               {iss.kind === "violated-constraint" && (
                 <span>
@@ -400,13 +432,18 @@ function DualityWorkspace({ t }) {
   const [knownX, setKnownX] = useStateD(DUALITY_DEFAULT_X);
   const [knownY, setKnownY] = useStateD([0, 0, 0]);
 
-  // Keep the size of knownX / knownY in sync with the LP shape. We don't reset
+  // Keep the size of knownX / knownY / varSigns in sync with the LP shape. We don't reset
   // values on every coefficient edit, only when the dimensions change.
   useEffectD(() => {
     if (knownX.length !== lp.c.length) {
       const next = new Array(lp.c.length).fill(0);
       for (let j = 0; j < Math.min(knownX.length, lp.c.length); j++) next[j] = knownX[j];
       setKnownX(next);
+    }
+    if (!lp.varSigns || lp.varSigns.length !== lp.c.length) {
+      const nextSigns = lp.varSigns ? lp.varSigns.slice(0, lp.c.length) : [];
+      while (nextSigns.length < lp.c.length) nextSigns.push(">= 0");
+      setLp({ ...lp, varSigns: nextSigns });
     }
   }, [lp.c.length]);
   useEffectD(() => {

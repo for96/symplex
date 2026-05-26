@@ -469,7 +469,7 @@ function CutsPanel({ lp, latestState, onRemoveLast, onReset, t }) {
           </div>
           <div className="cuts-list">
             {cuts.map((cut, i) => (
-              <CutItem key={i} cut={cut} lp={lp} t={t} />
+              <CutItem key={i} cut={cut} lp={lp} latestState={latestState} t={t} />
             ))}
           </div>
         </>
@@ -478,7 +478,7 @@ function CutsPanel({ lp, latestState, onRemoveLast, onReset, t }) {
   );
 }
 
-function CutItem({ cut, lp, t }) {
+function CutItem({ cut, lp, latestState, t }) {
   const fmt = Simplex.fmt;
   if (cut.kind === "cover") {
     return (
@@ -499,14 +499,31 @@ function CutItem({ cut, lp, t }) {
     );
   }
   if (cut.kind === "gomory") {
+    const terms = [];
+    for (let q = 0; q < cut.f_coefs.length; q++) {
+      const co = cut.f_coefs[q];
+      if (co > 1e-9) {
+        terms.push({ co, label: latestState.colLabels[q] });
+      }
+    }
     return (
       <div className="cut-item cut-gomory">
         <span className="cut-label">{cut.label}</span>
         <span className="cut-kind">gomory</span>
         <span className="cut-ineq">
-          <span className="cut-source">
-            {t.pivot}: <b>{cut.sourceVarLabel}</b> · {"{b}"} = {fmt(cut.f_b, 3)}
-          </span>
+          {terms.length > 0 ? (
+            terms.map((term, k) => (
+              <React.Fragment key={k}>
+                {k > 0 && " + "}
+                <Frac value={term.co} />
+                <VarNameInline name={term.label} />
+              </React.Fragment>
+            ))
+          ) : (
+            "0"
+          )}
+          {" ≥ "}
+          <Frac value={cut.f_b} />
         </span>
       </div>
     );

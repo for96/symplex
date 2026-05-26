@@ -66,7 +66,12 @@
   function primalFeasible(lp, x) {
     const issues = [];
     for (let j = 0; j < x.length; j++) {
-      if (x[j] < -EPS) issues.push({ kind: "negative-var", index: j, value: x[j] });
+      const sign = lp.varSigns ? lp.varSigns[j] : ">= 0";
+      if (sign === ">= 0" && x[j] < -EPS) {
+        issues.push({ kind: "wrong-sign", index: j, sign, value: x[j] });
+      } else if (sign === "<= 0" && x[j] > EPS) {
+        issues.push({ kind: "wrong-sign", index: j, sign, value: x[j] });
+      }
     }
     for (let i = 0; i < lp.constraints.length; i++) {
       const c = lp.constraints[i];
