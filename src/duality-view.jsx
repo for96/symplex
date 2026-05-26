@@ -35,6 +35,69 @@ const DUALITY_DEFAULT_X = [20 / 3, 11 / 3];
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+const DUALITY_HISTORY_KEY = "duality_lp_history_v1";
+const DUALITY_HISTORY_LIMIT = 8;
+
+function dualityLpFingerprint(lp) {
+  return JSON.stringify([
+    lp.objective,
+    lp.c,
+    (lp.constraints || []).map((c) => [c.a, c.op, c.b]),
+    lp.varSigns || [],
+  ]);
+}
+
+function loadDualityHistory() {
+  try {
+    const raw = localStorage.getItem(DUALITY_HISTORY_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveDualityHistory(arr) {
+  try {
+    localStorage.setItem(DUALITY_HISTORY_KEY, JSON.stringify(arr));
+  } catch (e) {}
+}
+
+function pushDualityHistory(lp) {
+  const arr = loadDualityHistory();
+  const fp = dualityLpFingerprint(lp);
+  const existsIdx = arr.findIndex((e) => {
+    const efp = e.lp ? dualityLpFingerprint(e.lp) : e.fp;
+    return efp === fp;
+  });
+  if (existsIdx !== -1) {
+    if (arr[existsIdx].fp !== fp) {
+      arr[existsIdx] = { ...arr[existsIdx], fp };
+      saveDualityHistory(arr);
+    }
+    return arr;
+  }
+  const filtered = [{ fp, lp: JSON.parse(JSON.stringify(lp)), ts: Date.now() }, ...arr];
+  while (filtered.length > DUALITY_HISTORY_LIMIT) filtered.pop();
+  saveDualityHistory(filtered);
+  return filtered;
+}
+
+function lpToTextOneLine(lp, t) {
+  const obj = lp.c
+    .map((v, j) => {
+      if (v === 0) return null;
+      const sign = v > 0 ? (j === 0 ? "" : "+") : "−";
+      const abs = Math.abs(v);
+      const c = abs === 1 ? "" : abs;
+      return `${sign}${c}${(lp.varNames[j] || "x").replace("_", "")}`;
+    })
+    .filter(Boolean)
+    .join("");
+  const abbr = (t && t.constraintsAbbr) || "vinc.";
+  return `${obj} · ${lp.constraints.length} ${abbr}`;
+}
+
 function formatFracInput(v) {
   if (typeof v !== "number" || !isFinite(v)) return "";
   const f = Simplex.toFraction(v);
@@ -431,6 +494,7 @@ function DualityWorkspace({ t }) {
   const [knownType, setKnownType] = useStateD("primal"); // "primal" or "dual"
   const [knownX, setKnownX] = useStateD(DUALITY_DEFAULT_X);
   const [knownY, setKnownY] = useStateD([0, 0, 0]);
+  const [dyHistory, setDyHistory] = useStateD(() => loadDualityHistory());
 
   // Keep the size of knownX / knownY / varSigns in sync with the LP shape. We don't reset
   // values on every coefficient edit, only when the dimensions change.
@@ -477,6 +541,69 @@ function DualityWorkspace({ t }) {
             <div className="section-title">{t.dyPrimalProblem}</div>
             <DualityLPEditor lp={lp} setLp={setLp} t={t} />
           </div>
+
+          <div className="section">
+            <div className="section-title" style={{ marginBottom: 6 }}>
+              {t.history}
+              {dyHistory && dyHistory.length > 0 && (
+                <button
+                  className="pill-btn"
+                  style={{ fontSize: 10, padding: "2px 8px" }}
+                  onClick={() => {
+                    saveDualityHistory([]);
+                    setDyHistory([]);
+                  }}
+                  title={t.clearHistory}
+                  aria-label={t.ariaClearHistory}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {(() => {
+              const currentFp = dualityLpFingerprint(lp);
+              const alreadySaved = !!(dyHistory && dyHistory.some((h) => {
+                const hfp = h.lp ? dualityLpFingerprint(h.lp) : h.fp;
+                return hfp === currentFp;
+              }));
+              return (
+                <div className="save-action">
+                  <button
+                    className={"pill-btn save-lp-btn" + (alreadySaved ? "" : " active")}
+                    onClick={() => {
+                      const updated = pushDualityHistory(lp);
+                      setDyHistory(updated);
+                    }}
+                    disabled={alreadySaved}
+                    title={alreadySaved ? t.alreadyInHistory : t.saveToHistory}
+                  >
+                    {alreadySaved ? `✓ ${t.alreadyInHistory}` : `💾 ${t.saveToHistory}`}
+                  </button>
+                </div>
+              );
+            })()}
+            {dyHistory && dyHistory.length > 0 && (
+              <div className="history-list">
+                {dyHistory.map((h, i) => {
+                  const currentFp = dualityLpFingerprint(lp);
+                  const hfp = h.lp ? dualityLpFingerprint(h.lp) : h.fp;
+                  const isCurrent = hfp === currentFp;
+                  return (
+                    <button
+                      key={h.fp}
+                      className={"history-item" + (isCurrent ? " is-current" : "")}
+                      onClick={() => setLp(JSON.parse(JSON.stringify(h.lp)))}
+                      title={new Date(h.ts).toLocaleString()}
+                    >
+                      <span className="hi-obj">{h.lp.objective}</span>{" "}
+                      <span className="hi-expr">{lpToTextOneLine(h.lp, t)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div className="section">
             <div className="section-title">
               {t.dyDualProblem}
