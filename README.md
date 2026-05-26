@@ -62,6 +62,7 @@ src/
 
 ### 📋 Todo
 - [ ] Aggiungere i vincoli sulle variabili primali nel selettore problema Primale in **Dualità** 
+- [ ] Risolvere il procedimento di calcolo del taglio di gomory secondo le direttive delle slide del prof.
 
 ## Crediti
 
