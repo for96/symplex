@@ -107,8 +107,8 @@ function pushHistory(lp) {
   return filtered;
 }
 
-// Mobile tab IDs: each maps to one of the three .col panels (or to the duality
-// workspace). On screens > 820px the tab bar is hidden via CSS and all panels
+// Mobile/tablet tab IDs: each maps to one of the three .col panels (or to the
+// duality workspace). On screens > 1180px the tab bar is hidden via CSS and all panels
 // are shown side-by-side; below that breakpoint we render the tab bar and let
 // CSS hide all but the active section via the `.mobile-section-X` class on
 // `.app-main`. The Duality tab is special — it toggles `mode` to DUALITY which
@@ -210,7 +210,7 @@ function App() {
         `palette-${tweaks.palette}`,
         `layout-${tweaks.layout}`,
       ].join(" ")}
-      style={{ display: "flex", flexDirection: "column", height: "100vh" }}
+      style={{ display: "flex", flexDirection: "column", height: "100%" }}
     >
       <header className={"app-header" + (menuOpen ? " menu-open" : "")}>
         <div>
@@ -332,7 +332,7 @@ function App() {
         </div>
       </header>
 
-      {/* Mobile tab bar — hidden via CSS on screens > 820px. The duality tab
+      {/* Mobile/tablet tab bar — hidden via CSS on screens > 1180px. The duality tab
           toggles top-level `mode`; the other three swap which .col is visible.
           We also scroll the new section to the top so the user doesn't land
           mid-page after a tab switch. */}
