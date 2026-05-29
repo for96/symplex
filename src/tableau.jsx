@@ -469,7 +469,7 @@ function CutsPanel({ lp, latestState, onRemoveLast, onReset, t }) {
           </div>
           <div className="cuts-list">
             {cuts.map((cut, i) => (
-              <CutItem key={i} cut={cut} lp={lp} latestState={latestState} t={t} />
+              <CutItemV2 key={i} cut={cut} lp={lp} latestState={latestState} t={t} />
             ))}
           </div>
         </>
@@ -529,6 +529,125 @@ function CutItem({ cut, lp, latestState, t }) {
     );
   }
   return null;
+}
+
+function CutItemV2({ cut, lp, latestState, t }) {
+  if (cut.kind === "cover") {
+    return (
+      <div className="cut-item cut-cover">
+        <span className="cut-label">{cut.label}</span>
+        <span className="cut-kind">cover</span>
+        <span className="cut-forms">
+          <span className="cut-ineq">
+            <ConstraintIneq constraint={cut.geomConstraint} names={lp.varNames} />
+          </span>
+          {typeof cut.sepValue === "number" && (
+            <span className="cut-source">
+              z<sub>sep</sub> = <Frac value={cut.sepValue} /> &lt; 1
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
+  if (cut.kind === "gomory") {
+    const terms = [];
+    for (let q = 0; q < cut.f_coefs.length; q++) {
+      const co = cut.f_coefs[q];
+      if (co > 1e-9) {
+        terms.push({ co, label: latestState.colLabels[q] });
+      }
+    }
+    return (
+      <div className="cut-item cut-gomory">
+        <span className="cut-label">{cut.label}</span>
+        <span className="cut-kind">gomory</span>
+        <span className="cut-forms">
+          <span className="cut-ineq">
+            {terms.length > 0 ? (
+              terms.map((term, k) => (
+                <React.Fragment key={k}>
+                  {k > 0 && " + "}
+                  <Frac value={term.co} />
+                  <VarNameInline name={term.label} />
+                </React.Fragment>
+              ))
+            ) : (
+              "0"
+            )}
+            {" \u2265 "}
+            <Frac value={cut.f_b} />
+          </span>
+          {cut.geomConstraint && (
+            <span className="cut-ineq cut-ineq-original">
+              <span className="cut-source">{t.cutOriginalVars || "Original vars"}: </span>
+              <ConstraintIneq constraint={cut.geomConstraint} names={lp.varNames} />
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
+  return null;
+}
+
+function flipOp(op) {
+  if (op === "<=") return ">=";
+  if (op === ">=") return "<=";
+  return op;
+}
+
+function constraintForDisplay(constraint) {
+  if (!constraint) return null;
+  const c = {
+    a: constraint.a.slice(),
+    op: constraint.op,
+    b: constraint.b,
+  };
+  if (c.b < -1e-9) {
+    c.a = c.a.map((v) => -v);
+    c.b = -c.b;
+    c.op = flipOp(c.op);
+  }
+  return c;
+}
+
+function ConstraintIneq({ constraint, names }) {
+  const c = constraintForDisplay(constraint);
+  if (!c) return null;
+  return (
+    <>
+      <LinearExpr coefs={c.a} names={names} />
+      {" "}
+      {c.op === "<=" ? "\u2264" : c.op === ">=" ? "\u2265" : "="}
+      {" "}
+      <Frac value={c.b} />
+    </>
+  );
+}
+
+function LinearExpr({ coefs, names }) {
+  const terms = [];
+  for (let j = 0; j < coefs.length; j++) {
+    const co = coefs[j];
+    if (Math.abs(co) > 1e-9) terms.push({ co, name: names[j] || `x${j + 1}` });
+  }
+  if (terms.length === 0) return <span>0</span>;
+  return (
+    <>
+      {terms.map((term, k) => {
+        const neg = term.co < 0;
+        const abs = Math.abs(term.co);
+        return (
+          <React.Fragment key={k}>
+            {k === 0 ? (neg ? "-" : "") : (neg ? " - " : " + ")}
+            {Math.abs(abs - 1) > 1e-9 && <Frac value={abs} />}
+            <VarNameInline name={term.name} />
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
 }
 
 // Small inline variable-name (without the React.Fragment wrap of VarName)

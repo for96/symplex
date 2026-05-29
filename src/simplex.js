@@ -748,6 +748,12 @@
     return f;
   }
 
+  function clamp01(v) {
+    if (v < 0) return 0;
+    if (v > 1) return 1;
+    return v;
+  }
+
   // Returns the index of the most-fractional integer-required basic decision
   // variable, or -1 if all integer-required vars are already integer.
   // Following the professor's slides, we choose the variable with the maximum fractional part.
@@ -975,7 +981,82 @@
   // For each ≤ constraint (original LP) with all-positive coefficients on
   // binary vars, look for a minimal cover violated by the current fractional
   // solution. Returns the first one found.
-  function generateCoverCut(state, lp) {
+  // Separation oracle from the slides:
+  //   min sum_j (1 - x*_j) y_j
+  //   s.t. sum_j a_j y_j > b, y in {0,1}^n.
+  // If the optimum is < 1, C={j:y_j=1} yields the violated cover inequality
+  //   sum_{j in C} x_j <= |C|-1.
+  function separateCover(c, candidateVars, xStar) {
+    const items = [];
+    for (const j of candidateVars) {
+      const weight = c.a[j];
+      if (weight <= EPS) continue;
+      const x = clamp01(xStar[j] || 0);
+      // With x*=0 the separation cost is already 1, so the variable cannot be
+      // part of a violated cover with objective value < 1.
+      if (x <= EPS) continue;
+      items.push({ j, weight, cost: 1 - x });
+    }
+    if (items.length === 0) return null;
+
+    items.sort((u, v) => {
+      const dc = u.cost - v.cost;
+      if (Math.abs(dc) > EPS) return dc;
+      return v.weight - u.weight;
+    });
+
+    const suffixWeight = new Array(items.length + 1).fill(0);
+    for (let i = items.length - 1; i >= 0; i--) {
+      suffixWeight[i] = suffixWeight[i + 1] + items[i].weight;
+    }
+
+    let bestCost = 1 - 1e-7;
+    let bestCover = null;
+    const selected = [];
+
+    function dfs(idx, sumWeight, sumCost) {
+      if (sumCost >= bestCost - EPS) return;
+      if (sumWeight > c.b + EPS) {
+        bestCost = sumCost;
+        bestCover = selected.slice();
+        return;
+      }
+      if (idx >= items.length) return;
+      if (sumWeight + suffixWeight[idx] <= c.b + EPS) return;
+
+      const item = items[idx];
+      selected.push(item.j);
+      dfs(idx + 1, sumWeight + item.weight, sumCost + item.cost);
+      selected.pop();
+      dfs(idx + 1, sumWeight, sumCost);
+    }
+
+    dfs(0, 0, 0);
+    if (!bestCover) return null;
+
+    // Make the cover minimal by inclusion, as in the definition from the slides.
+    let minimal = bestCover.slice();
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let k = 0; k < minimal.length; k++) {
+        const trial = minimal.filter((_, idx) => idx !== k);
+        const w = trial.reduce((acc, j) => acc + c.a[j], 0);
+        if (w > c.b + EPS) {
+          minimal = trial;
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    const coverWeight = minimal.reduce((acc, j) => acc + c.a[j], 0);
+    const sepValue = minimal.reduce((acc, j) => acc + (1 - clamp01(xStar[j] || 0)), 0);
+    if (sepValue >= 1 - 1e-7) return null;
+    return { cover: minimal, sepValue, coverWeight };
+  }
+
+  function generateCoverCutGreedyLegacy(state, lp) {
     if (state.status !== "optimal") return null;
     const bounds = ensureBounds(lp);
     const binaryVars = [];
@@ -1043,6 +1124,50 @@
           geomConstraint: { a: aGeom, op: "<=", b: rhs },
         };
       }
+    }
+    return null;
+  }
+
+  function generateCoverCutExact(state, lp) {
+    if (state.status !== "optimal") return null;
+    const bounds = ensureBounds(lp);
+    const binaryVars = [];
+    for (let j = 0; j < lp.c.length; j++) {
+      if (bounds[j].kind === "binary") binaryVars.push(j);
+    }
+    if (binaryVars.length === 0) return null;
+
+    const sol = currentSolution(state);
+    const xStar = lp.c.map((_, j) => sol[state.colLabels[j]] || 0);
+
+    for (let ci = 0; ci < lp.constraints.length; ci++) {
+      const c = lp.constraints[ci];
+      if (c.op !== "<=") continue;
+      if (c.kind === "bound") continue;
+      if (binaryVars.some((j) => c.a[j] < -EPS)) continue;
+      if (binaryVars.every((j) => Math.abs(c.a[j]) < EPS)) continue;
+
+      const separated = separateCover(c, binaryVars, xStar);
+      if (!separated) continue;
+
+      const cover = separated.cover;
+      const lhs = cover.reduce((acc, j) => acc + xStar[j], 0);
+      const rhs = cover.length - 1;
+      if (lhs <= rhs + 1e-7) continue;
+
+      const aGeom = new Array(lp.c.length).fill(0);
+      for (const j of cover) aGeom[j] = 1;
+      return {
+        kind: "cover",
+        constraintIdx: ci,
+        cover: cover.slice(),
+        rhs,
+        lhsValue: lhs,
+        sepValue: separated.sepValue,
+        coverWeight: separated.coverWeight,
+        sourceRhs: c.b,
+        geomConstraint: { a: aGeom, op: "<=", b: rhs },
+      };
     }
     return null;
   }
@@ -1135,7 +1260,7 @@
     const bounds = ensureBounds(lp);
     const allBinary = bounds.slice(0, lp.c.length).every((b) => b.kind === "binary");
     // Cover requires all integer vars to be binary, plus a violated cover exists.
-    const coverCut = allBinary ? generateCoverCut(state, lp) : null;
+    const coverCut = allBinary ? generateCoverCutExact(state, lp) : null;
     return {
       gomory: true, // Gomory always works if there's a fractional integer var
       cover: !!coverCut,
@@ -1146,7 +1271,7 @@
   function applyCut(state, lp, kind) {
     let cut;
     if (kind === "gomory") cut = generateGomoryCut(state, lp);
-    else if (kind === "cover") cut = generateCoverCut(state, lp);
+    else if (kind === "cover") cut = generateCoverCutExact(state, lp);
     if (!cut) return null;
     let s = applyCutToTableau(state, cut);
     if (!s) return null;
@@ -1184,7 +1309,7 @@
     fractionalPart,
     dualSimplexStep,
     generateGomoryCut,
-    generateCoverCut,
+    generateCoverCut: generateCoverCutExact,
     applyCutToTableau,
     cutsAvailability,
     applyCut,

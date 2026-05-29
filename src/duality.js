@@ -185,7 +185,7 @@
     if (numUnknowns === 0) {
       // All y_i are known to be zero — y* = 0.
       const y = new Array(m).fill(0);
-      return finishWithDual(lp, dual, y, steps, eqs);
+      return finishWithDual(lp, dual, y, steps, eqs, xStar);
     }
 
     if (eqs.length === 0) {
@@ -216,17 +216,16 @@
     }
     const y = new Array(m).fill(0);
     for (let k = 0; k < numUnknowns; k++) y[yFree[k]] = sol.x[k];
-    return finishWithDual(lp, dual, y, steps, eqs);
+    return finishWithDual(lp, dual, y, steps, eqs, xStar);
   }
 
-  function finishWithDual(lp, dual, y, steps, eqs) {
+  function finishWithDual(lp, dual, y, steps, eqs, xStar) {
     steps.push({ kind: "solution-dual", y });
     const feasD = dualFeasible(dual, y);
     steps.push({ kind: "dual-feasibility", feasible: feasD.ok, issues: feasD.issues });
 
     // Objective values
-    const xs = steps.find((s) => s.kind === "primal-feasibility");
-    const zVal = computeObjective(lp, getPrimalXFromSteps(steps));
+    const zVal = computeObjective(lp, xStar);
     const wVal = dual.c.reduce((s, c, i) => s + c * y[i], 0);
     steps.push({ kind: "objective-values", z: zVal, w: wVal });
     return { steps, ok: feasD.ok, y };
@@ -316,7 +315,7 @@
 
     if (numUnknowns === 0) {
       const x = new Array(n).fill(0);
-      return finishWithPrimal(lp, dual, x, steps);
+      return finishWithPrimal(lp, dual, x, steps, yStar);
     }
 
     if (eqs.length < numUnknowns) {
@@ -340,17 +339,18 @@
     }
     const x = new Array(n).fill(0);
     for (let k = 0; k < numUnknowns; k++) x[xFree[k]] = sol.x[k];
-    return finishWithPrimal(lp, dual, x, steps);
+    return finishWithPrimal(lp, dual, x, steps, yStar);
   }
 
-  function finishWithPrimal(lp, dual, x, steps) {
+  function finishWithPrimal(lp, dual, x, steps, yStar) {
     steps.push({ kind: "solution-primal", x });
     const feasP = primalFeasible(lp, x);
     steps.push({ kind: "primal-feasibility-final", feasible: feasP.ok, issues: feasP.issues });
     const zVal = lp.c.reduce((s, c, j) => s + c * x[j], 0);
-    // Recover y from earlier steps to compute w
+    // Keep the step data complete for callers outside the React view too.
     // (caller passes yStar — we don't have direct access; compute later in view).
-    steps.push({ kind: "objective-values", z: zVal });
+    const wVal = yStar ? dual.c.reduce((s, c, i) => s + c * yStar[i], 0) : null;
+    steps.push({ kind: "objective-values", z: zVal, w: wVal });
     return { steps, ok: feasP.ok, x };
   }
 

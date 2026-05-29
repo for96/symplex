@@ -145,6 +145,7 @@
       fractionalOptimal: "Ottimo frazionario",
       noFractional: "Soluzione già intera",
       cutIneq: "Disequazione",
+      cutOriginalVars: "Variabili originarie",
       // Mode toggle (top-level workspace switcher)
       modeToggle: "Modalità",
       modeSimplex: "Simplesso",
@@ -358,6 +359,7 @@
       fractionalOptimal: "Fractional optimum",
       noFractional: "Solution already integer",
       cutIneq: "Inequality",
+      cutOriginalVars: "Original variables",
       // Mode toggle
       modeToggle: "Mode",
       modeSimplex: "Simplex",

@@ -249,7 +249,7 @@ function DualityLPEditor({ lp, setLp, t }) {
           </div>
         </div>
       ))}
-      <div className="var-signs-row" style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, borderTop: "1px solid var(--border-color)", paddingTop: 10 }}>
+      <div className="var-signs-row" style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, borderTop: "1px solid var(--rule)", paddingTop: 10 }}>
         <span style={{ color: "var(--ink-2)" }}>{t.varBoundsSection}:</span>
         {lp.c.map((_, j) => {
           const sign = lp.varSigns ? lp.varSigns[j] : ">= 0";

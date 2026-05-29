@@ -19,6 +19,12 @@
   --accent-2-soft: oklch(52% 0.10 200 / 0.14);
   --feasible: oklch(58% 0.18 28 / 0.10);
   --feasible-stroke: oklch(58% 0.18 28 / 0.5);
+  --dy-ok: oklch(42% 0.11 178);
+  --dy-ok-soft: oklch(42% 0.11 178 / 0.12);
+  --dy-ko: oklch(48% 0.15 28);
+  --dy-ko-soft: oklch(48% 0.15 28 / 0.12);
+  --dy-eq: oklch(42% 0.12 245);
+  --dy-eq-soft: oklch(42% 0.12 245 / 0.12);
   --slack: #968a72;
   --artificial: oklch(45% 0.16 320);
   --warn: oklch(60% 0.18 60);
@@ -51,6 +57,12 @@
   --accent-2-soft: oklch(74% 0.08 195 / 0.22);
   --feasible: oklch(74% 0.12 32 / 0.16);
   --feasible-stroke: oklch(74% 0.12 32 / 0.6);
+  --dy-ok: oklch(78% 0.10 178);
+  --dy-ok-soft: oklch(78% 0.10 178 / 0.16);
+  --dy-ko: oklch(78% 0.12 32);
+  --dy-ko-soft: oklch(78% 0.12 32 / 0.16);
+  --dy-eq: oklch(78% 0.09 245);
+  --dy-eq-soft: oklch(78% 0.09 245 / 0.16);
   --slack: oklch(78% 0.05 80);
   --artificial: oklch(76% 0.09 320);
   --warn: oklch(78% 0.13 65);
@@ -697,10 +709,19 @@ body {
   color: var(--ink-3);
   text-transform: lowercase;
 }
+.cut-forms {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
 .cut-ineq {
   font-family: var(--font-mono);
   color: var(--ink);
   font-size: 12px;
+}
+.cut-ineq-original {
+  color: var(--ink-2);
 }
 .cut-source {
   font-family: var(--font-serif);
@@ -1541,12 +1562,12 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   background: var(--bg-paper);
 }
 .dy-step.solved {
-  border-left-color: var(--feasible);
-  background: color-mix(in oklch, var(--feasible) 6%, var(--bg-paper));
+  border-left-color: var(--dy-ok);
+  background: color-mix(in oklch, var(--dy-ok-soft) 70%, var(--bg-paper));
 }
 .dy-step.ko {
-  border-left-color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 6%, var(--bg-paper));
+  border-left-color: var(--dy-ko);
+  background: color-mix(in oklch, var(--dy-ko-soft) 70%, var(--bg-paper));
 }
 .dy-step-head {
   display: flex;
@@ -1584,8 +1605,8 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   font-size: 13px;
   padding: 4px 0;
 }
-.dy-feas.ok { color: var(--feasible); }
-.dy-feas.ko { color: var(--accent); }
+.dy-feas.ok { color: var(--dy-ok); }
+.dy-feas.ko { color: var(--dy-ko); }
 .dy-issues {
   margin: 4px 0 0 16px;
   font-size: 12px;
@@ -1612,7 +1633,7 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   border-bottom: 1px solid var(--rule);
 }
 .dy-table tr.active td:first-child {
-  color: var(--feasible);
+  color: var(--dy-ok);
   font-weight: 600;
 }
 .dy-table tr.inactive td:first-child {
@@ -1670,7 +1691,7 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   color: var(--ink-3);
 }
 .dy-system td.dy-rhs {
-  color: var(--accent);
+  color: var(--dy-ko);
   font-weight: 600;
 }
 
@@ -1705,16 +1726,16 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   text-transform: uppercase;
 }
 .dy-tag.active {
-  color: var(--feasible);
-  background: color-mix(in oklch, var(--feasible) 14%, var(--bg-paper));
+  color: var(--dy-ok);
+  background: color-mix(in oklch, var(--dy-ok-soft) 82%, var(--bg-paper));
 }
 .dy-tag.inactive {
   color: var(--ink-3);
   background: var(--bg-2);
 }
 .dy-tag.eq {
-  color: var(--accent-2);
-  background: color-mix(in oklch, var(--accent-2) 18%, var(--bg-paper));
+  color: var(--dy-eq);
+  background: color-mix(in oklch, var(--dy-eq-soft) 82%, var(--bg-paper));
 }
 
 /* Strong-duality summary */
@@ -1736,16 +1757,16 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   padding: 4px 0;
 }
 .badge.ok {
-  color: var(--feasible);
-  background: color-mix(in oklch, var(--feasible) 14%, var(--bg-paper));
+  color: var(--dy-ok);
+  background: color-mix(in oklch, var(--dy-ok-soft) 82%, var(--bg-paper));
   border-radius: 10px;
   padding: 1px 8px;
   font-size: 10px;
   margin-left: 8px;
 }
 .badge.ko {
-  color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 14%, var(--bg-paper));
+  color: var(--dy-ko);
+  background: color-mix(in oklch, var(--dy-ko-soft) 82%, var(--bg-paper));
   border-radius: 10px;
   padding: 1px 8px;
   font-size: 10px;
@@ -1753,19 +1774,40 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
 }
 
 /* Dark-mode tweaks for the duality workspace */
-.theme-dark .dy-step { background: var(--bg-paper); }
+.theme-dark .dy-step {
+  background: var(--bg-paper);
+  border-color: var(--rule-2);
+}
 .theme-dark .dy-step.solved {
-  background: color-mix(in oklch, var(--feasible) 12%, var(--bg-paper));
+  background: color-mix(in oklch, var(--dy-ok-soft) 85%, var(--bg-paper));
 }
 .theme-dark .dy-step.ko {
-  background: color-mix(in oklch, var(--accent) 12%, var(--bg-paper));
+  background: color-mix(in oklch, var(--dy-ko-soft) 85%, var(--bg-paper));
 }
-.theme-dark .dy-deduction { background: var(--bg-2); }
+.theme-dark .dy-editor input[type="number"],
+.theme-dark .frac-input {
+  background: var(--bg-2);
+  border-color: var(--rule-2);
+}
+.theme-dark .dy-table th,
+.theme-dark .dy-table td {
+  border-bottom-color: var(--rule-2);
+}
+.theme-dark .dy-deduction {
+  background: var(--bg-2);
+  border: 1px solid var(--rule-2);
+}
 .theme-dark .dy-tag.active {
-  background: color-mix(in oklch, var(--feasible) 22%, var(--bg-paper));
+  color: var(--dy-ok);
+  background: color-mix(in oklch, var(--dy-ok-soft) 90%, var(--bg-paper));
+}
+.theme-dark .dy-tag.inactive {
+  color: var(--ink-2);
+  background: color-mix(in oklch, var(--ink-3) 14%, var(--bg-paper));
 }
 .theme-dark .dy-tag.eq {
-  background: color-mix(in oklch, var(--accent-2) 28%, var(--bg-paper));
+  color: var(--dy-eq);
+  background: color-mix(in oklch, var(--dy-eq-soft) 90%, var(--bg-paper));
 }
 
 /* ====== Mobile (phones) ====== */
