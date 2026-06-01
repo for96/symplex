@@ -11,17 +11,25 @@
   // still be 1e-12..1e-10 numerically. Loosening risks accepting fake degeneracy.
   const EPS = 1e-9;
 
+  function flipOp(op) {
+    return op === "<=" ? ">=" : op === ">=" ? "<=" : "=";
+  }
+
+  function normalizeConstraint(c) {
+    const shouldFlip = c.b < -EPS || (Math.abs(c.b) <= EPS && c.op === ">=");
+    if (shouldFlip) {
+      return {
+        a: c.a.map((v) => -v),
+        op: flipOp(c.op),
+        b: Math.abs(c.b) <= EPS ? 0 : -c.b,
+        rowScale: -1,
+      };
+    }
+    return { a: c.a.slice(), op: c.op, b: Math.abs(c.b) <= EPS ? 0 : c.b, rowScale: 1 };
+  }
+
   function normalize(constraints) {
-    return constraints.map((c) => {
-      if (c.b < 0) {
-        return {
-          a: c.a.map((v) => -v),
-          op: c.op === "<=" ? ">=" : c.op === ">=" ? "<=" : "=",
-          b: -c.b,
-        };
-      }
-      return { a: c.a.slice(), op: c.op, b: c.b };
-    });
+    return constraints.map(normalizeConstraint);
   }
 
   // Convenzione −z (Marinelli, slide 38–41): la riga obiettivo memorizza
@@ -53,6 +61,7 @@
     const isMin = lp.objective === "min";
     const n = lp.c.length;
     const constraints = normalize(lp.constraints);
+    const rowScale = constraints.map((c) => c.rowScale || 1);
     const m = constraints.length;
 
     let nSlack = 0;
@@ -168,6 +177,7 @@
       starterCol,
       starterSign,
       slackForRow,
+      rowScale,
       isMin,
       cOrig,
       cFull,
@@ -489,7 +499,7 @@
     // (per starter di tipo slack/artificiale con costo originale 0). Quindi
     // y_i = −T[0][starter] / starterSign[i].  Per problemi di min, c'è un
     // ulteriore flip di segno (internamente massimizziamo −c).
-    const { T, starterCol, starterSign, isMin } = state;
+    const { T, starterCol, starterSign, rowScale, isMin } = state;
     const origM = starterCol ? starterCol.length : 0;
     const y = new Array(origM).fill(0);
     for (let i = 0; i < origM; i++) {
@@ -497,7 +507,8 @@
       if (colIdx == null || colIdx < 0) continue;
       const sign = starterSign ? (starterSign[i] || 1) : 1;
       const v = -T[0][colIdx] / sign;
-      y[i] = isMin ? -v : v;
+      const scale = rowScale ? (rowScale[i] || 1) : 1;
+      y[i] = scale * (isMin ? -v : v);
     }
     return y;
   }
@@ -641,8 +652,9 @@
       //                              (initial sign −1, tracked in starterSign).
       // For = after phase-1 cleanup: starter is -1 (handled above).
       const sign = state.starterSign ? (state.starterSign[i] || 1) : 1;
+      const scale = state.rowScale ? (state.rowScale[i] || 1) : 1;
       const col = [];
-      for (let r = 0; r < m; r++) col.push(T[r + 1][starter] / sign);
+      for (let r = 0; r < m; r++) col.push(scale * T[r + 1][starter] / sign);
       let lo = -Infinity, hi = Infinity;
       for (let r = 0; r < m; r++) {
         const v = col[r];
@@ -905,17 +917,8 @@
     const n = lp.c.length;
     const dataCols = state.T[0].length - 1;
 
-    // Re-derive the normalized constraints (the way buildLP normalized them: b≥0).
-    const normCons = state.originalLP.constraints.map((c) => {
-      if (c.b < 0) {
-        return {
-          a: c.a.map((v) => -v),
-          op: c.op === "<=" ? ">=" : c.op === ">=" ? "<=" : "=",
-          b: -c.b,
-        };
-      }
-      return { a: c.a.slice(), op: c.op, b: c.b };
-    });
+    // Re-derive the normalized constraints exactly as buildLP did.
+    const normCons = normalize(state.originalLP.constraints);
 
     // Map slack-col-index → normalized constraint. Slacks are appended in order
     // of constraint index (only "<=" or ">=" produce a slack).

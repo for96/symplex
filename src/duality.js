@@ -354,36 +354,156 @@
     return { steps, ok: feasP.ok, x };
   }
 
-  // ---------- RHS sensitivity from x* and y* ----------
-  // Range of b_i over which the current optimal basis stays optimal.
-  // Approximate approach (good enough for the chapter-4 sensitivity items
-  // 4.7 / 4.8): identify the basis from x* (vars with x_j > 0 plus slacks of
-  // inactive primal constraints). Compute basic-var values as a function of
-  // a perturbation Δb_i, then find the range of Δb_i that keeps everything ≥ 0.
-  //
-  // Limitation: requires a non-degenerate optimum (basis has exactly m basic
-  // variables, where m is the number of primal constraints). If x* has fewer
-  // positives, we can't uniquely identify the basis without a full simplex —
-  // we just return Infinity ranges in that case.
-  function rhsSensitivity(lp, xStar, yStar) {
+  function cleanZero(v) {
+    return Math.abs(v) < EPS ? 0 : v;
+  }
+
+  function rankOfColumns(columns, m) {
+    if (columns.length === 0) return 0;
+    const A = new Array(m).fill(0).map((_, r) => columns.map((col) => col[r]));
+    let rank = 0;
+    const n = columns.length;
+    for (let col = 0; col < n; col++) {
+      let pivot = rank;
+      let pmax = Math.abs(A[rank] ? A[rank][col] : 0);
+      for (let r = rank + 1; r < m; r++) {
+        if (Math.abs(A[r][col]) > pmax) {
+          pmax = Math.abs(A[r][col]);
+          pivot = r;
+        }
+      }
+      if (pmax < 1e-10) continue;
+      if (pivot !== rank) {
+        const tmp = A[rank];
+        A[rank] = A[pivot];
+        A[pivot] = tmp;
+      }
+      const piv = A[rank][col];
+      for (let j = col; j < n; j++) A[rank][j] /= piv;
+      for (let r = 0; r < m; r++) {
+        if (r === rank) continue;
+        const factor = A[r][col];
+        if (Math.abs(factor) < 1e-14) continue;
+        for (let j = col; j < n; j++) A[r][j] -= factor * A[rank][j];
+      }
+      rank++;
+      if (rank === m) break;
+    }
+    return rank;
+  }
+
+  function rowsFromColumns(columns, m) {
+    return new Array(m).fill(0).map((_, r) => columns.map((col) => col[r]));
+  }
+
+  function standardColumns(lp, xStar) {
     const m = lp.constraints.length;
     const n = lp.c.length;
-    // Pre-condition: y_i = 0 for all inactive constraints (already enforced
-    // by complementary slackness). Active set:
-    const active = lp.constraints.map((c, i) => {
-      const lhs = c.a.reduce((s, a, j) => s + a * xStar[j], 0);
-      return c.op === "=" ? true : Math.abs(lhs - c.b) < EPS;
-    });
-    const ranges = lp.constraints.map(() => ({ low: -Infinity, high: Infinity }));
-    // For each i with y_i > 0 (active), perturbing b_i by Δ moves the optimum
-    // by some amount along the basis directions. To do this rigorously we'd
-    // need the basis-inverse column; we punt and return Infinity ranges if
-    // we can't identify a clean square basis.
-    // For chapter-4 problems the textbook usually asks "how much can b_i
-    // change while the basis stays the same"; we approximate with the simplex
-    // tool when the user solves via simplex separately. Here we just return
-    // empty ranges to keep the UI honest.
-    return ranges;
+    const lhs = lp.constraints.map((c) => c.a.reduce((s, a, j) => s + a * (xStar[j] || 0), 0));
+    const cols = [];
+    for (let j = 0; j < n; j++) {
+      cols.push({
+        kind: "decision",
+        index: j,
+        label: (lp.varNames && lp.varNames[j]) || `x${j + 1}`,
+        value: cleanZero(xStar[j] || 0),
+        col: lp.constraints.map((c) => c.a[j]),
+      });
+    }
+    for (let i = 0; i < m; i++) {
+      const c = lp.constraints[i];
+      if (c.op === "=") continue;
+      const sign = c.op === "<=" ? 1 : -1;
+      const slack = c.op === "<=" ? c.b - lhs[i] : lhs[i] - c.b;
+      const col = new Array(m).fill(0);
+      col[i] = sign;
+      cols.push({
+        kind: "slack",
+        index: i,
+        label: `s${i + 1}`,
+        value: cleanZero(slack),
+        col,
+      });
+    }
+    return { cols, lhs };
+  }
+
+  function inferBasis(lp, xStar) {
+    const m = lp.constraints.length;
+    const signs = lp.varSigns || new Array(lp.c.length).fill(">= 0");
+    if (signs.some((s) => s !== ">= 0")) return { error: "unsupported-var-signs" };
+    const { cols } = standardColumns(lp, xStar);
+    const positive = cols.filter((c) => c.value > EPS);
+    if (positive.length > m) return { error: "not-a-bfs" };
+
+    const basis = [];
+    let rank = 0;
+    for (const c of positive) {
+      const nextRank = rankOfColumns([...basis.map((b) => b.col), c.col], m);
+      if (nextRank <= rank) return { error: "dependent-positive" };
+      basis.push(c);
+      rank = nextRank;
+    }
+
+    let degenerate = basis.length < m;
+    for (const c of cols) {
+      if (basis.length === m) break;
+      if (basis.includes(c)) continue;
+      const nextRank = rankOfColumns([...basis.map((b) => b.col), c.col], m);
+      if (nextRank > rank) {
+        basis.push(c);
+        rank = nextRank;
+      }
+    }
+    if (basis.length < m) return { error: "no-basis" };
+    return { basis, degenerate };
+  }
+
+  // ---------- RHS sensitivity from x* and y* ----------
+  // Slide procedure: the current basis B stays optimal while it stays feasible,
+  // so for each single RHS perturbation b_i -> b_i + delta we solve
+  // x_B + delta * B^-1 e_i >= 0.
+  function rhsSensitivity(lp, xStar, yStar) {
+    const m = lp.constraints.length;
+    if (!xStar || xStar.length !== lp.c.length) return { ok: false, reason: "missing-primal" };
+    const inferred = inferBasis(lp, xStar);
+    if (inferred.error) return { ok: false, reason: inferred.error };
+
+    const basis = inferred.basis;
+    const B = rowsFromColumns(basis.map((c) => c.col), m);
+    const b = lp.constraints.map((c) => c.b);
+    const xbSol = solveSystem(B, b);
+    if (xbSol.error || xbSol.singular) return { ok: false, reason: "singular-basis" };
+
+    const ranges = [];
+    for (let i = 0; i < m; i++) {
+      const e = new Array(m).fill(0);
+      e[i] = 1;
+      const colSol = solveSystem(B, e);
+      if (colSol.error || colSol.singular) return { ok: false, reason: "singular-basis" };
+      let low = -Infinity;
+      let high = Infinity;
+      for (let r = 0; r < m; r++) {
+        const v = colSol.x[r];
+        const xb = xbSol.x[r];
+        if (v > EPS) low = Math.max(low, -xb / v);
+        else if (v < -EPS) high = Math.min(high, -xb / v);
+      }
+      ranges.push({
+        low,
+        high,
+        b: lp.constraints[i].b,
+        dualValue: yStar && yStar.length > i ? yStar[i] : null,
+        column: colSol.x.slice(),
+      });
+    }
+
+    return {
+      ok: true,
+      ranges,
+      basis: basis.map((c) => ({ kind: c.kind, index: c.index, label: c.label, value: c.value })),
+      degenerate: inferred.degenerate,
+    };
   }
 
   window.Duality = {

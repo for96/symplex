@@ -213,6 +213,13 @@
       dyErrUnderdetermined: "sistema sotto-determinato",
       dyErrInconsistent: "sistema inconsistente",
       dyErrSystem: "errore del sistema",
+      dySensitivityExplain: "Per ogni termine noto si varia un solo b_i alla volta e si impone x_B + δ_i B⁻¹e_i ≥ 0: la base corrente resta ammissibile, quindi ottima.",
+      dySensitivityFormula: "valore ottimo",
+      dySensitivityUnavailable: "Sensitività non disponibile",
+      dySensitivityNoBasis: "non riesco a ricostruire una base quadrata non singolare da x*",
+      dySensitivityNotBfs: "la soluzione non identifica un vertice/base ammissibile",
+      dySensitivityUnsupportedSigns: "supportata solo con variabili primali x ≥ 0",
+      dySensitivityDegenerate: "Base degenere: è stata completata con variabili nulle; gli intervalli si riferiscono a questa base.",
     },
     en: {
       appTitle: "Operations Research — Simplex",
@@ -427,6 +434,13 @@
       dyErrUnderdetermined: "underdetermined system",
       dyErrInconsistent: "inconsistent system",
       dyErrSystem: "system error",
+      dySensitivityExplain: "For each RHS, vary one b_i at a time and require x_B + δ_i B⁻¹e_i ≥ 0: the current basis remains feasible, hence optimal.",
+      dySensitivityFormula: "optimal value",
+      dySensitivityUnavailable: "Sensitivity unavailable",
+      dySensitivityNoBasis: "could not reconstruct a nonsingular square basis from x*",
+      dySensitivityNotBfs: "the solution does not identify a feasible vertex/basis",
+      dySensitivityUnsupportedSigns: "supported only when primal variables satisfy x ≥ 0",
+      dySensitivityDegenerate: "Degenerate basis: completed with zero-valued variables; ranges refer to this basis.",
     },
   };
   window.i18n = dict;

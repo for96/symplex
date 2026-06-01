@@ -489,6 +489,63 @@ function SolutionVector({ values, symbol, t }) {
 // Main workspace
 // ────────────────────────────────────────────────────────────────────────────
 
+function sensitivityReason(t, reason) {
+  const map = {
+    "unsupported-var-signs": t.dySensitivityUnsupportedSigns,
+    "not-a-bfs": t.dySensitivityNotBfs,
+    "dependent-positive": t.dySensitivityNotBfs,
+    "no-basis": t.dySensitivityNoBasis,
+    "singular-basis": t.dySensitivityNoBasis,
+    "missing-primal": t.dySensitivityNoBasis,
+  };
+  return map[reason] || reason;
+}
+
+function DualitySensitivityPanel({ data, lp, t }) {
+  if (!data.ok) {
+    return (
+      <div className="dy-note">
+        {t.dySensitivityUnavailable}: {sensitivityReason(t, data.reason)}
+      </div>
+    );
+  }
+  return (
+    <div className="dy-step-body">
+      <div className="dy-explain">{t.dySensitivityExplain}</div>
+      {data.degenerate && (
+        <div className="dy-note">{t.dySensitivityDegenerate}</div>
+      )}
+      <div className="dy-frees">
+        {t.currentBasis}: {data.basis.map((b) => b.label).join(", ")}
+      </div>
+      <table className="sens-table" style={{ marginTop: 10 }}>
+        <thead>
+          <tr>
+            <th>{t.constraintLabel}</th>
+            <th>b<sub>i</sub></th>
+            <th>{t.rhsRange}</th>
+            <th>{t.dySensitivityFormula}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.ranges.map((r, i) => (
+            <tr key={i}>
+              <td>C{i + 1}</td>
+              <td><FracDisplay value={lp.constraints[i].b} /></td>
+              <td>
+                [<FracDisplay value={r.b + r.low} /> , <FracDisplay value={r.b + r.high} />]
+              </td>
+              <td>
+                z* + δ<sub>{i + 1}</sub>·<FracDisplay value={r.dualValue || 0} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DualityWorkspace({ t }) {
   const [lp, setLp] = useStateD(DUALITY_DEFAULT_LP);
   const [knownType, setKnownType] = useStateD("primal"); // "primal" or "dual"
@@ -531,6 +588,14 @@ function DualityWorkspace({ t }) {
       return { steps: [], ok: false, error: "exception" };
     }
   }, [lp, dual, knownType, knownX, knownY]);
+
+  const sensitivity = useMemoD(() => {
+    if (!result || !result.ok) return null;
+    const xStar = knownType === "primal" ? knownX : result.x;
+    const yStar = knownType === "primal" ? result.y : knownY;
+    if (!xStar || !yStar) return null;
+    return Duality.rhsSensitivity(lp, xStar, yStar);
+  }, [lp, result, knownType, knownX, knownY]);
 
   return (
     <div className="duality-workspace">
@@ -701,6 +766,13 @@ function DualityWorkspace({ t }) {
               t={t}
             />
           </div>
+
+          {sensitivity && (
+            <div className="section">
+              <div className="section-title">{t.sensitivity}</div>
+              <DualitySensitivityPanel data={sensitivity} lp={lp} t={t} />
+            </div>
+          )}
         </div>
       </div>
     </div>
