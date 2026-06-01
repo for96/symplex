@@ -538,7 +538,7 @@ function CutItemV2({ cut, lp, latestState, t }) {
         <span className="cut-label">{cut.label}</span>
         <span className="cut-kind">cover</span>
         <span className="cut-forms">
-          <span className="cut-ineq">
+          <span className="cut-ineq cut-ineq-applied cut-ineq-original">
             <ConstraintIneq constraint={cut.geomConstraint} names={lp.varNames} />
           </span>
           {typeof cut.sepValue === "number" && (
@@ -579,7 +579,7 @@ function CutItemV2({ cut, lp, latestState, t }) {
             <Frac value={cut.f_b} />
           </span>
           {cut.geomConstraint && (
-            <span className="cut-ineq cut-ineq-original">
+            <span className="cut-ineq cut-ineq-applied cut-ineq-original">
               <span className="cut-source">{t.cutOriginalVars || "Original vars"}: </span>
               <ConstraintIneq constraint={cut.geomConstraint} names={lp.varNames} />
             </span>
