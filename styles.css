@@ -721,22 +721,14 @@ body {
   font-size: 12px;
 }
 .cut-ineq-applied {
-  font-size: 13px;
   font-weight: 700;
-  line-height: 1.45;
 }
 .cut-ineq-original {
   color: var(--ink);
 }
-.cut-ineq-applied .var-name,
-.cut-ineq-applied .var-name sub,
-.cut-ineq-applied .frac {
-  font-weight: 700;
-}
 .cut-ineq-applied .cut-source {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink);
+  font-weight: 400;
+  color: var(--ink-2);
 }
 .cut-source {
   font-family: var(--font-serif);
