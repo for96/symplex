@@ -100,9 +100,12 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
     );
   }
 
-  const margin = { top: 24, right: 32, bottom: 30, left: 40 };
   const W = size.w;
   const H = size.h;
+  const compactPlot = W <= 520;
+  const margin = compactPlot
+    ? { top: 10, right: 10, bottom: 22, left: 28 }
+    : { top: 24, right: 32, bottom: 30, left: 40 };
   const plotW = W - margin.left - margin.right;
   const plotH = H - margin.top - margin.bottom;
 
@@ -148,8 +151,8 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
     }
     return ticks;
   }
-  const xTicks = makeTicks(Math.max(0, bb.xmin), bb.xmax);
-  const yTicks = makeTicks(Math.max(0, bb.ymin), bb.ymax);
+  const xTicks = makeTicks(bb.xmin, bb.xmax);
+  const yTicks = makeTicks(bb.ymin, bb.ymax);
 
   // Level curves
   const cv = effective.c;
@@ -158,18 +161,31 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
   if (Math.abs(cv[0]) > 1e-9 || Math.abs(cv[1]) > 1e-9) {
     const span =
       Math.abs(z_curr) * 1.5 +
-      Math.max(bb.xmax * Math.abs(cv[0]), bb.ymax * Math.abs(cv[1]));
+      Math.max(
+        Math.max(Math.abs(bb.xmin), Math.abs(bb.xmax)) * Math.abs(cv[0]),
+        Math.max(Math.abs(bb.ymin), Math.abs(bb.ymax)) * Math.abs(cv[1]),
+      );
     const stepZ = niceStep(span / 6);
-    let zmin =
-      Math.floor((bb.xmin * cv[0] + bb.ymin * cv[1]) / stepZ) * stepZ;
-    let zmax = Math.ceil((bb.xmax * cv[0] + bb.ymax * cv[1]) / stepZ) * stepZ;
+    const zCorners = [
+      bb.xmin * cv[0] + bb.ymin * cv[1],
+      bb.xmin * cv[0] + bb.ymax * cv[1],
+      bb.xmax * cv[0] + bb.ymin * cv[1],
+      bb.xmax * cv[0] + bb.ymax * cv[1],
+    ];
+    let zmin = Math.floor(Math.min(...zCorners) / stepZ) * stepZ;
+    let zmax = Math.ceil(Math.max(...zCorners) / stepZ) * stepZ;
     for (let z = zmin; z <= zmax + 1e-9; z += stepZ) levels.push(z);
   }
 
   // Gradient
   const gradLen = Math.hypot(cv[0], cv[1]);
-  const gradScale = (Math.min(bb.xmax, bb.ymax) * 0.3) / Math.max(gradLen, 1e-6);
-  const gradStart = { x: 0.3, y: 0.3 };
+  const gradScale =
+    (Math.min(bb.xmax - bb.xmin, bb.ymax - bb.ymin) * 0.22) /
+    Math.max(gradLen, 1e-6);
+  const gradStart = {
+    x: bb.xmin + (bb.xmax - bb.xmin) * 0.12,
+    y: bb.ymin + (bb.ymax - bb.ymin) * 0.12,
+  };
   const gradEnd = {
     x: gradStart.x + cv[0] * gradScale * 0.6,
     y: gradStart.y + cv[1] * gradScale * 0.6,

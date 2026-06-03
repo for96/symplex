@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-const src = readFileSync("E:/claude/src/simplex.js", "utf8");
+const src = readFileSync("src/simplex.js", "utf8");
 const shimmed = "var window = globalThis;\n" + src + "\nexport const Simplex = globalThis.Simplex;";
 import("data:text/javascript;base64," + Buffer.from(shimmed).toString("base64")).then(({Simplex}) => {
   const lp = {

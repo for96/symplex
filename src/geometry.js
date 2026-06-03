@@ -83,21 +83,64 @@
 
   function bounds(lp) {
     const v = vertices(lp);
-    let xmax = 6;
-    let ymax = 6;
-    if (v.length) {
-      xmax = Math.max(...v.map((p) => p.x));
-      ymax = Math.max(...v.map((p) => p.y));
+    const pts = [{ x: 0, y: 0 }, ...v];
+    const lines = lp.constraints.map((c) => ({
+      a: c.a[0],
+      b: c.a[1],
+      c: c.b,
+    }));
+
+    function addPoint(x, y) {
+      if (!isFinite(x) || !isFinite(y)) return;
+      // Keep accidental near-parallel explosions from making the useful plot
+      // disappear into a single pixel.
+      if (Math.abs(x) > 1e6 || Math.abs(y) > 1e6) return;
+      pts.push({ x, y });
     }
-    // also factor in axis intercepts of constraints
-    for (const c of lp.constraints) {
-      if (Math.abs(c.a[0]) > EPS) xmax = Math.max(xmax, Math.abs(c.b / c.a[0]));
-      if (Math.abs(c.a[1]) > EPS) ymax = Math.max(ymax, Math.abs(c.b / c.a[1]));
+
+    // Also factor in signed axis intercepts and pairwise line intersections.
+    // This keeps hyperplanes visible even when the interesting geometry lives
+    // outside the first quadrant.
+    for (const line of lines) {
+      if (Math.abs(line.a) > EPS) addPoint(line.c / line.a, 0);
+      if (Math.abs(line.b) > EPS) addPoint(0, line.c / line.b);
     }
-    xmax = xmax * 1.25 + 1;
-    ymax = ymax * 1.25 + 1;
-    const span = Math.max(xmax, ymax);
-    return { xmin: -span * 0.08, ymin: -span * 0.08, xmax, ymax };
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const p = lineIntersect(
+          lines[i].a,
+          lines[i].b,
+          lines[i].c,
+          lines[j].a,
+          lines[j].b,
+          lines[j].c,
+        );
+        if (p) addPoint(p.x, p.y);
+      }
+    }
+
+    let xmin = Math.min(...pts.map((p) => p.x));
+    let xmax = Math.max(...pts.map((p) => p.x));
+    let ymin = Math.min(...pts.map((p) => p.y));
+    let ymax = Math.max(...pts.map((p) => p.y));
+
+    if (xmax - xmin < EPS) {
+      xmin -= 3;
+      xmax += 3;
+    }
+    if (ymax - ymin < EPS) {
+      ymin -= 3;
+      ymax += 3;
+    }
+
+    const xPad = Math.max((xmax - xmin) * 0.08, 0.35);
+    const yPad = Math.max((ymax - ymin) * 0.08, 0.35);
+    return {
+      xmin: xmin < 0 ? xmin - xPad : xmin,
+      ymin: ymin < 0 ? ymin - yPad : ymin,
+      xmax: xmax > 0 ? xmax + xPad : xmax,
+      ymax: ymax > 0 ? ymax + yPad : ymax,
+    };
   }
 
   // Clip a line a*x + b*y = c to bounds; returns two endpoints inside the viewbox.

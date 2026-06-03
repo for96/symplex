@@ -165,6 +165,35 @@ function App() {
   // history with near-identical entries when editing coefficient by coefficient.
 
   useEffectApp(() => {
+    const prevent = (event) => event.preventDefault();
+    const preventTouchZoom = (event) => {
+      if (event.touches && event.touches.length > 1) event.preventDefault();
+    };
+    const preventWheelZoom = (event) => {
+      if (event.ctrlKey || event.metaKey) event.preventDefault();
+    };
+    const preventKeyZoom = (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (["+", "-", "=", "_", "0"].includes(event.key)) event.preventDefault();
+    };
+
+    document.addEventListener("gesturestart", prevent, { passive: false });
+    document.addEventListener("gesturechange", prevent, { passive: false });
+    document.addEventListener("gestureend", prevent, { passive: false });
+    document.addEventListener("touchmove", preventTouchZoom, { passive: false });
+    window.addEventListener("wheel", preventWheelZoom, { passive: false });
+    window.addEventListener("keydown", preventKeyZoom);
+    return () => {
+      document.removeEventListener("gesturestart", prevent);
+      document.removeEventListener("gesturechange", prevent);
+      document.removeEventListener("gestureend", prevent);
+      document.removeEventListener("touchmove", preventTouchZoom);
+      window.removeEventListener("wheel", preventWheelZoom);
+      window.removeEventListener("keydown", preventKeyZoom);
+    };
+  }, []);
+
+  useEffectApp(() => {
     if (!playing) return;
     if (step >= history.length - 1) {
       setPlaying(false);

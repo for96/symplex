@@ -119,7 +119,14 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; }
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+}
 body {
   background: var(--bg);
   color: var(--ink);
@@ -127,6 +134,7 @@ body {
   font-size: 14px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
   text-rendering: optimizeLegibility;
 }
 
@@ -137,6 +145,8 @@ body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  touch-action: pan-x pan-y;
 }
 
 /* ====== Header ====== */
@@ -468,6 +478,15 @@ body {
   text-align: right;
   -moz-appearance: textfield;
   min-width: 0;
+}
+.coef-input-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.coef-sign-btn {
+  display: none;
 }
 
 /* Term group: keeps coefficient input + variable name attached (won't wrap apart).
@@ -1901,14 +1920,42 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
      can't fit (e.g. 4+ variables on a 320px screen). */
   .coef-line { gap: 4px; }
   .coef-term { gap: 3px; }
-  .coef-term input[type="number"] { width: 44px; }
+  .coef-term input[type="number"] { width: 54px; }
   .coef-plus { padding: 0; }
   .coef-rhs {
     gap: 3px;
     flex: 0 0 auto;
   }
-  .coef-rhs input[type="number"] { width: 48px; }
+  .coef-rhs input[type="number"] { width: 58px; }
   .coef-rhs .op-select { padding: 4px 2px; }
+  .coef-input-wrap input[type="number"] {
+    padding-left: 20px;
+  }
+  .coef-sign-btn {
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    z-index: 1;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: calc(100% - 4px);
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink-3);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1;
+    touch-action: manipulation;
+  }
+  .coef-input-wrap.is-negative .coef-sign-btn {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
 
   /* Editor head wraps cleanly */
   .editor-head { flex-wrap: wrap; row-gap: 6px; }
@@ -1930,7 +1977,13 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
 
   /* Geometria con altezza minima ragionevole */
   .geom-head { padding: 12px 14px 4px; }
-  .geom-svg-wrap { margin: 0 10px; min-height: 280px; }
+  .geom-svg-wrap {
+    margin: 0;
+    min-height: 280px;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
   .geom-overlay {
     max-width: 160px;
     font-size: 10px;
@@ -1996,4 +2049,3 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
     transition: none !important;
   }
 }
-

@@ -25,23 +25,71 @@ function CoefInput({ value, onChange }) {
   // and snap back to the canonical parent value (so an accidental tap doesn't
   // destroy data).
   const [draft, setDraft] = useState(null);
+  const [pendingNegative, setPendingNegative] = useState(false);
+  const shown = draft !== null ? draft : value;
+  const isNegative = pendingNegative || String(shown).startsWith("-");
+
+  function parsedNumber(raw) {
+    const n = parseFloat(String(raw).replace(",", "."));
+    return isNaN(n) ? null : n;
+  }
+
+  function commitRaw(raw) {
+    let next = raw;
+    if (pendingNegative && raw !== "" && !String(raw).startsWith("-")) {
+      next = `-${raw}`;
+      setPendingNegative(false);
+    }
+    setDraft(next);
+    if (next !== "" && next !== "-" && next !== "." && next !== "-.") {
+      const v = parsedNumber(next);
+      if (v !== null) onChange(v);
+    }
+  }
+
+  function toggleSign(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const raw = draft !== null ? String(draft) : String(value ?? "");
+    if (raw === "" || raw === "-") {
+      setDraft("");
+      setPendingNegative((v) => !v);
+      return;
+    }
+    const next = raw.startsWith("-") ? raw.slice(1) : `-${raw}`;
+    setPendingNegative(false);
+    setDraft(next);
+    const v = parsedNumber(next);
+    if (v !== null) onChange(v);
+  }
+
   return (
-    <input
-      type="number"
-      step="any"
-      inputMode="decimal"
-      value={draft !== null ? draft : value}
-      onFocus={() => setDraft("")}
-      onChange={(e) => {
-        const raw = e.target.value;
-        setDraft(raw);
-        if (raw !== "") {
-          const v = parseFloat(raw);
-          if (!isNaN(v)) onChange(v);
-        }
-      }}
-      onBlur={() => setDraft(null)}
-    />
+    <span className={"coef-input-wrap" + (isNegative ? " is-negative" : "")}>
+      <input
+        type="number"
+        step="any"
+        inputMode="decimal"
+        value={shown}
+        onFocus={() => {
+          setDraft("");
+          setPendingNegative(false);
+        }}
+        onChange={(e) => commitRaw(e.target.value)}
+        onBlur={() => {
+          setDraft(null);
+          setPendingNegative(false);
+        }}
+      />
+      <button
+        type="button"
+        className="coef-sign-btn"
+        aria-label="Cambia segno"
+        tabIndex={-1}
+        onPointerDown={toggleSign}
+      >
+        -
+      </button>
+    </span>
   );
 }
 
