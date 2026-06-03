@@ -216,9 +216,15 @@ body {
   letter-spacing: 0.02em;
   transition: all 0.15s ease;
 }
-.app-tools button:hover, .pill-btn:hover {
+.app-tools button:hover:not(:disabled), .pill-btn:hover:not(:disabled) {
   border-color: var(--ink);
   color: var(--ink);
+}
+.app-tools button:disabled, .pill-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  color: var(--ink-3);
+  border-color: var(--rule);
 }
 .app-tools button.active, .pill-btn.active {
   background: var(--ink);
@@ -1469,10 +1475,15 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
 .theme-dark .seg button + button { border-left-color: var(--rule-2); }
 .theme-dark .rm-btn { border-color: var(--rule-2); color: var(--ink-2); }
 .theme-dark .rm-btn:hover { color: var(--accent); border-color: var(--accent); }
-.theme-dark .app-tools button:hover,
-.theme-dark .pill-btn:hover {
+.theme-dark .app-tools button:hover:not(:disabled),
+.theme-dark .pill-btn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
+}
+.theme-dark .app-tools button:disabled,
+.theme-dark .pill-btn:disabled {
+  color: var(--ink-3);
+  border-color: var(--rule-2);
 }
 .theme-dark .step-bar .stepper { border-color: var(--rule-2); }
 .theme-dark .step-bar .stepper button + button { border-left-color: var(--rule-2); }

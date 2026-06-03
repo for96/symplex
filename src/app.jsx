@@ -256,6 +256,15 @@ function App() {
   function handleResetCuts() {
     setAppliedCuts([]);
   }
+  function cutButtonTitle(kind) {
+    if (cutAvail[kind]) return kind === CUT_KINDS.COVER ? t.cutCoverDesc : t.cutGomoryDesc;
+    const reason = cutAvail.reasons && cutAvail.reasons[kind];
+    if (reason === "structure") {
+      return kind === CUT_KINDS.COVER ? t.cutCoverUnavailable : t.cutGomoryUnavailable;
+    }
+    if (reason === "integer-optimal") return t.noFractional;
+    return t.cutNone;
+  }
 
   return (
     <div
@@ -366,7 +375,8 @@ function App() {
                   <button
                     className="pill-btn"
                     disabled={!cutAvail.cover}
-                    title={cutAvail.cover ? t.cutCoverDesc : t.cutNone}
+                    aria-disabled={!cutAvail.cover}
+                    title={cutButtonTitle(CUT_KINDS.COVER)}
                     onClick={() => handleApplyCut(CUT_KINDS.COVER)}
                   >
                     + {t.cutsCover}
@@ -374,7 +384,8 @@ function App() {
                   <button
                     className="pill-btn"
                     disabled={!cutAvail.gomory}
-                    title={cutAvail.gomory ? t.cutGomoryDesc : t.cutNone}
+                    aria-disabled={!cutAvail.gomory}
+                    title={cutButtonTitle(CUT_KINDS.GOMORY)}
                     onClick={() => handleApplyCut(CUT_KINDS.GOMORY)}
                   >
                     + {t.cutsGomory}
@@ -495,7 +506,8 @@ function App() {
                   <button
                     className="pill-btn"
                     disabled={!cutAvail.cover}
-                    title={cutAvail.cover ? t.cutCoverDesc : t.cutNone}
+                    aria-disabled={!cutAvail.cover}
+                    title={cutButtonTitle(CUT_KINDS.COVER)}
                     onClick={() => handleApplyCut(CUT_KINDS.COVER)}
                   >
                     + {t.cutsCover}
@@ -503,7 +515,8 @@ function App() {
                   <button
                     className="pill-btn"
                     disabled={!cutAvail.gomory}
-                    title={cutAvail.gomory ? t.cutGomoryDesc : t.cutNone}
+                    aria-disabled={!cutAvail.gomory}
+                    title={cutButtonTitle(CUT_KINDS.GOMORY)}
                     onClick={() => handleApplyCut(CUT_KINDS.GOMORY)}
                   >
                     + {t.cutsGomory}

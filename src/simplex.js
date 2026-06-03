@@ -759,6 +759,28 @@
     return bounds[j] && (bounds[j].kind === "integer" || bounds[j].kind === "binary");
   }
 
+  function hasIntegerRequiredVar(lp) {
+    const bounds = ensureBounds(lp);
+    for (let j = 0; j < lp.c.length; j++) {
+      if (bounds[j].kind === "integer" || bounds[j].kind === "binary") return true;
+    }
+    return false;
+  }
+
+  function hasCoverStructure(lp) {
+    const bounds = ensureBounds(lp);
+    const allBinary = bounds.slice(0, lp.c.length).every((b) => b.kind === "binary");
+    if (!allBinary) return false;
+
+    return lp.constraints.some((c) => {
+      if (c.kind === "bound") return false;
+      if (c.op !== "<=") return false;
+      if (c.a.some((coef) => coef < -EPS)) return false;
+      const positiveSum = c.a.reduce((sum, coef) => sum + (coef > EPS ? coef : 0), 0);
+      return positiveSum > c.b + EPS;
+    });
+  }
+
   function fractionalPart(v) {
     const f = v - Math.floor(v);
     if (f < 1e-9 || f > 1 - 1e-9) return 0;
@@ -1261,17 +1283,38 @@
 
   // ---------- Detect which cut kinds are applicable at the current state ----------
   function cutsAvailability(state, lp) {
-    if (state.status !== "optimal") return { gomory: false, cover: false };
-    if (lp.type !== "ilp") return { gomory: false, cover: false };
+    const gomoryStructure = lp.type === "ilp" && hasIntegerRequiredVar(lp);
+    const coverStructure = lp.type === "ilp" && hasCoverStructure(lp);
+    const reasons = {
+      gomory: gomoryStructure ? null : "structure",
+      cover: coverStructure ? null : "structure",
+    };
+
+    if (state.status !== "optimal") {
+      return { gomory: false, cover: false, reasons };
+    }
+    if (lp.type !== "ilp") {
+      return { gomory: false, cover: false, reasons };
+    }
     const fracVar = mostFractionalIntegerVar(state, lp);
-    if (fracVar === -1) return { gomory: false, cover: false };
-    const bounds = ensureBounds(lp);
-    const allBinary = bounds.slice(0, lp.c.length).every((b) => b.kind === "binary");
-    // Cover requires all integer vars to be binary, plus a violated cover exists.
-    const coverCut = allBinary ? generateCoverCutExact(state, lp) : null;
+    if (fracVar === -1) {
+      return {
+        gomory: false,
+        cover: false,
+        reasons: {
+          gomory: reasons.gomory || "integer-optimal",
+          cover: reasons.cover || "integer-optimal",
+        },
+      };
+    }
+    const coverCut = coverStructure ? generateCoverCutExact(state, lp) : null;
     return {
-      gomory: true, // Gomory always works if there's a fractional integer var
+      gomory: gomoryStructure, // Gomory works when an integer-required var is fractional.
       cover: !!coverCut,
+      reasons: {
+        gomory: gomoryStructure ? null : reasons.gomory,
+        cover: coverCut ? null : (reasons.cover || "no-violated-cover"),
+      },
     };
   }
 
