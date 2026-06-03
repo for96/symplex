@@ -104,7 +104,7 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
   const H = size.h;
   const compactPlot = W <= 520;
   const margin = compactPlot
-    ? { top: 10, right: 10, bottom: 22, left: 28 }
+    ? { top: 8, right: 8, bottom: 8, left: 8 }
     : { top: 24, right: 32, bottom: 30, left: 40 };
   const plotW = W - margin.left - margin.right;
   const plotH = H - margin.top - margin.bottom;
@@ -196,6 +196,18 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
     : "";
 
   const axisLabels = effective.varNames.map((v) => v.replace("_", ""));
+  const axisX0 = xScale(0);
+  const axisY0 = yScale(0);
+  const xAxisNearBottom = compactPlot && axisY0 > H - 20;
+  const xAxisNearTop = compactPlot && axisY0 < 20;
+  const yAxisNearLeft = compactPlot && axisX0 < 32;
+  const yAxisNearRight = compactPlot && axisX0 > W - 32;
+  const xTickLabelY = xAxisNearBottom ? axisY0 - 8 : axisY0 + 14;
+  const yTickLabelX = yAxisNearLeft ? axisX0 + 6 : axisX0 - 6;
+  const yTickTextAnchor = yAxisNearLeft ? "start" : "end";
+  const xAxisLabelY = xAxisNearTop ? axisY0 + 14 : axisY0 - 6;
+  const yAxisLabelX = yAxisNearRight ? axisX0 - 8 : axisX0 + 8;
+  const yAxisTextAnchor = yAxisNearRight ? "end" : "start";
 
   return (
     <div className="geom-wrap" data-screen-label="geometry">
@@ -317,13 +329,13 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
             className="g-axis"
             x1={margin.left}
             x2={W - margin.right}
-            y1={yScale(0)}
-            y2={yScale(0)}
+            y1={axisY0}
+            y2={axisY0}
           />
           <line
             className="g-axis"
-            x1={xScale(0)}
-            x2={xScale(0)}
+            x1={axisX0}
+            x2={axisX0}
             y1={margin.top}
             y2={H - margin.bottom}
           />
@@ -333,13 +345,13 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
                 className="g-axis"
                 x1={xScale(x)}
                 x2={xScale(x)}
-                y1={yScale(0) - 3}
-                y2={yScale(0) + 3}
+                y1={axisY0 - 3}
+                y2={axisY0 + 3}
               />
               <text
                 className="g-tick-label"
                 x={xScale(x)}
-                y={yScale(0) + 14}
+                y={xTickLabelY}
                 textAnchor="middle"
               >
                 {x}
@@ -350,16 +362,16 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
             <g key={`ty${i}`}>
               <line
                 className="g-axis"
-                x1={xScale(0) - 3}
-                x2={xScale(0) + 3}
+                x1={axisX0 - 3}
+                x2={axisX0 + 3}
                 y1={yScale(y)}
                 y2={yScale(y)}
               />
               <text
                 className="g-tick-label"
-                x={xScale(0) - 6}
+                x={yTickLabelX}
                 y={yScale(y) + 3}
-                textAnchor="end"
+                textAnchor={yTickTextAnchor}
               >
                 {y}
               </text>
@@ -368,15 +380,16 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
           <text
             className="g-axis-label"
             x={W - margin.right - 4}
-            y={yScale(0) - 6}
+            y={xAxisLabelY}
             textAnchor="end"
           >
             {axisLabels[0]}
           </text>
           <text
             className="g-axis-label"
-            x={xScale(0) + 8}
+            x={yAxisLabelX}
             y={margin.top + 4}
+            textAnchor={yAxisTextAnchor}
           >
             {axisLabels[1]}
           </text>

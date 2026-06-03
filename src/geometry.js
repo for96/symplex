@@ -84,26 +84,32 @@
   function bounds(lp) {
     const v = vertices(lp);
     const pts = [{ x: 0, y: 0 }, ...v];
+    const includeSignedLineGeometry = v.length === 0;
     const lines = lp.constraints.map((c) => ({
       a: c.a[0],
       b: c.a[1],
       c: c.b,
     }));
 
-    function addPoint(x, y) {
+    function addPoint(x, y, { signed = false } = {}) {
       if (!isFinite(x) || !isFinite(y)) return;
+      if (!signed && (x < -EPS || y < -EPS)) return;
       // Keep accidental near-parallel explosions from making the useful plot
       // disappear into a single pixel.
       if (Math.abs(x) > 1e6 || Math.abs(y) > 1e6) return;
       pts.push({ x, y });
     }
 
-    // Also factor in signed axis intercepts and pairwise line intersections.
-    // This keeps hyperplanes visible even when the interesting geometry lives
-    // outside the first quadrant.
+    // Also factor in line geometry. Signed points are only needed when nothing
+    // feasible appears in the first quadrant; otherwise they create dead space
+    // below/left of the axes on mobile.
     for (const line of lines) {
-      if (Math.abs(line.a) > EPS) addPoint(line.c / line.a, 0);
-      if (Math.abs(line.b) > EPS) addPoint(0, line.c / line.b);
+      if (Math.abs(line.a) > EPS) {
+        addPoint(line.c / line.a, 0, { signed: includeSignedLineGeometry });
+      }
+      if (Math.abs(line.b) > EPS) {
+        addPoint(0, line.c / line.b, { signed: includeSignedLineGeometry });
+      }
     }
     for (let i = 0; i < lines.length; i++) {
       for (let j = i + 1; j < lines.length; j++) {
@@ -115,7 +121,7 @@
           lines[j].b,
           lines[j].c,
         );
-        if (p) addPoint(p.x, p.y);
+        if (p) addPoint(p.x, p.y, { signed: includeSignedLineGeometry });
       }
     }
 
@@ -125,12 +131,22 @@
     let ymax = Math.max(...pts.map((p) => p.y));
 
     if (xmax - xmin < EPS) {
-      xmin -= 3;
-      xmax += 3;
+      if (xmin >= -EPS) {
+        xmin = 0;
+        xmax = 3;
+      } else {
+        xmin -= 3;
+        xmax += 3;
+      }
     }
     if (ymax - ymin < EPS) {
-      ymin -= 3;
-      ymax += 3;
+      if (ymin >= -EPS) {
+        ymin = 0;
+        ymax = 3;
+      } else {
+        ymin -= 3;
+        ymax += 3;
+      }
     }
 
     const xPad = Math.max((xmax - xmin) * 0.08, 0.35);
