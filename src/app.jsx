@@ -246,7 +246,6 @@ function App() {
           <h1 className="app-title">
             {t.appTitlePrefix} <em>{t.appTitleEm}</em>
           </h1>
-          <span className="app-sub">{t.subtitle}</span>
         </div>
         <button
           className="hamburger-btn"
