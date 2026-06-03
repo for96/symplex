@@ -175,8 +175,15 @@
         if (x >= bb.xmin - EPS && x <= bb.xmax + EPS) pts.push({ x, y });
       });
     }
-    if (pts.length < 2) return null;
-    return [pts[0], pts[pts.length - 1]];
+    // Deduplicate points that are extremely close to each other
+    const uniquePts = [];
+    for (const p of pts) {
+      if (!uniquePts.some(up => Math.abs(up.x - p.x) < 1e-9 && Math.abs(up.y - p.y) < 1e-9)) {
+        uniquePts.push(p);
+      }
+    }
+    if (uniquePts.length < 2) return null;
+    return [uniquePts[0], uniquePts[1]];
   }
 
   window.Geom = { vertices, isFeasible, bounds, clipLine, lineIntersect };

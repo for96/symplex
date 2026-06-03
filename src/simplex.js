@@ -10,6 +10,7 @@
   // repeated row operations on rationals — a "true zero" in the algebra can
   // still be 1e-12..1e-10 numerically. Loosening risks accepting fake degeneracy.
   const EPS = 1e-9;
+  const fractionCache = new Map();
 
   function flipOp(op) {
     return op === "<=" ? ">=" : op === ">=" ? "<=" : "=";
@@ -603,6 +604,8 @@
   function toFraction(v, maxDen = 200) {
     if (!isFinite(v)) return { num: v, den: 1, isInt: false, special: true };
     if (Math.abs(v) < 1e-9) return { num: 0, den: 1, isInt: true };
+    const key = `${v.toFixed(12)}_${maxDen}`;
+    if (fractionCache.has(key)) return fractionCache.get(key);
     const sign = v < 0 ? -1 : 1;
     let x = Math.abs(v);
     let h0 = 0, h1 = 1, k0 = 1, k1 = 0;
@@ -619,12 +622,14 @@
       b = 1 / frac;
       if (!isFinite(b)) break;
     }
-    return {
+    const res = {
       num: sign * h1,
       den: k1,
       isInt: k1 === 1,
       approx: Math.abs(x - h1 / k1) > 1e-9,
     };
+    fractionCache.set(key, res);
+    return res;
   }
 
   function sensitivity(state) {

@@ -5,7 +5,7 @@
    DualityWorkspace,
    TweaksPanel, TweakSection, TweakRadio, TweakToggle */
 
-const { useState: useStateApp, useEffect: useEffectApp, useMemo: useMemoApp } = React;
+const { useState: useStateApp, useEffect: useEffectApp, useMemo: useMemoApp, useRef: useRefApp } = React;
 
 const DEFAULT_LP = {
   type: "lp",
@@ -155,10 +155,41 @@ function App() {
     setAppliedCuts([]);
   }, [effectiveLP]);
 
+  const prevLP = useRefApp(effectiveLP);
+  const prevRule = useRefApp(tweaks.rule);
+  const prevCutsLength = useRefApp(appliedCuts.length);
+
   useEffectApp(() => {
-    setStep(0);
-    setPlaying(false);
-  }, [effectiveLP, tweaks.rule, appliedCuts]);
+    const lpChanged = prevLP.current !== effectiveLP;
+    const ruleChanged = prevRule.current !== tweaks.rule;
+    const cutsLengthChanged = prevCutsLength.current !== appliedCuts.length;
+
+    prevLP.current = effectiveLP;
+    prevRule.current = tweaks.rule;
+    prevCutsLength.current = appliedCuts.length;
+
+    if (lpChanged || ruleChanged) {
+      setStep(0);
+      setPlaying(false);
+    } else if (cutsLengthChanged) {
+      if (history.length > 0) {
+        setStep(history.length - 1);
+      }
+      setPlaying(false);
+    }
+  }, [effectiveLP, tweaks.rule, appliedCuts.length, history.length]);
+
+  const [isMobile, setIsMobile] = useStateApp(() => {
+    return typeof window !== "undefined" && window.innerWidth <= 1180;
+  });
+
+  useEffectApp(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth <= 1180);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Persistence is manual: the user controls when an LP enters the history via
   // an explicit "Save" button. The previous debounced auto-save flooded the
@@ -213,12 +244,7 @@ function App() {
     return Simplex.cutsAvailability(latestState, effectiveLP);
   }, [latestState, effectiveLP]);
 
-  // When applying/removing cuts, jump step to the latest reachable state
-  useEffectApp(() => {
-    if (history.length > 0) {
-      setStep(history.length - 1);
-    }
-  }, [appliedCuts.length]);
+
 
   function handleApplyCut(kind) {
     if (!cutAvail[kind]) return;
@@ -422,92 +448,98 @@ function App() {
       ) : (
       <div className={`app-main mobile-section-${mobileSection}`}>
         {/* Left column — input + dual */}
-        <div className="col left">
-          <ProblemEditor
-            lp={lp}
-            setLp={setLp}
-            t={t}
-            lpHistory={lpHistory}
-            currentFp={lpFingerprint(lp)}
-            onSaveLp={() => setLpHistory(pushHistory(lp))}
-            onClearHistory={() => {
-              saveHistory([]);
-              setLpHistory([]);
-            }}
-          />
-          <DualPanel lp={effectiveLP} state={state} t={t} />
-        </div>
+        {(!isMobile || mobileSection === MOBILE_TABS.PROBLEM) && (
+          <div className="col left">
+            <ProblemEditor
+              lp={lp}
+              setLp={setLp}
+              t={t}
+              lpHistory={lpHistory}
+              currentFp={lpFingerprint(lp)}
+              onSaveLp={() => setLpHistory(pushHistory(lp))}
+              onClearHistory={() => {
+                saveHistory([]);
+                setLpHistory([]);
+              }}
+            />
+            <DualPanel lp={effectiveLP} state={state} t={t} />
+          </div>
+        )}
 
         {/* Center — geometry */}
-        <div className="col center">
-          <GeometryView
-            lp={effectiveLP}
-            state={state}
-            history={history}
-            step={step}
-            t={t}
-            tweaks={tweaks}
-            appliedCuts={state.appliedCuts || []}
-          />
-        </div>
+        {(!isMobile || mobileSection === MOBILE_TABS.GEOMETRY) && (
+          <div className="col center">
+            <GeometryView
+              lp={effectiveLP}
+              state={state}
+              history={history}
+              step={step}
+              t={t}
+              tweaks={tweaks}
+              appliedCuts={state.appliedCuts || []}
+            />
+          </div>
+        )}
 
         {/* Right column — tableau, controls, stats */}
-        <div className="col right">
-          <div className="section" data-screen-label="tableau">
-            <div className="section-title">
-              {t.tableau}
-              <StatusPill status={state.status} t={t} />
-            </div>
-            {lp.type === "ilp" && (
-              <div className="cut-actions cut-actions-mobile" role="group" aria-label={t.cuts}>
-                <span className="cut-actions-label">{t.cuts}:</span>
-                <button
-                  className="pill-btn"
-                  disabled={!cutAvail.cover}
-                  title={cutAvail.cover ? t.cutCoverDesc : t.cutNone}
-                  onClick={() => handleApplyCut(CUT_KINDS.COVER)}
-                >
-                  + {t.cutsCover}
-                </button>
-                <button
-                  className="pill-btn"
-                  disabled={!cutAvail.gomory}
-                  title={cutAvail.gomory ? t.cutGomoryDesc : t.cutNone}
-                  onClick={() => handleApplyCut(CUT_KINDS.GOMORY)}
-                >
-                  + {t.cutsGomory}
-                </button>
+        {(!isMobile || mobileSection === MOBILE_TABS.TABLEAU) && (
+          <div className="col right">
+            <div className="section" data-screen-label="tableau">
+              <div className="section-title">
+                {t.tableau}
+                <StatusPill status={state.status} t={t} />
               </div>
+              {lp.type === "ilp" && (
+                <div className="cut-actions cut-actions-mobile" role="group" aria-label={t.cuts}>
+                  <span className="cut-actions-label">{t.cuts}:</span>
+                  <button
+                    className="pill-btn"
+                    disabled={!cutAvail.cover}
+                    title={cutAvail.cover ? t.cutCoverDesc : t.cutNone}
+                    onClick={() => handleApplyCut(CUT_KINDS.COVER)}
+                  >
+                    + {t.cutsCover}
+                  </button>
+                  <button
+                    className="pill-btn"
+                    disabled={!cutAvail.gomory}
+                    title={cutAvail.gomory ? t.cutGomoryDesc : t.cutNone}
+                    onClick={() => handleApplyCut(CUT_KINDS.GOMORY)}
+                  >
+                    + {t.cutsGomory}
+                  </button>
+                </div>
+              )}
+              <TableauView state={state} t={t} verbose={tweaks.tableauStyle === TABLEAU_STYLES.VERBOSE} lang={tweaks.lang} />
+              <StepBar
+                step={step}
+                total={history.length}
+                setStep={setStep}
+                playing={playing}
+                setPlaying={setPlaying}
+                t={t}
+              />
+              {tweaks.tableauStyle === TABLEAU_STYLES.VERBOSE && (
+                <Narration state={state} step={step} t={t} lang={tweaks.lang} />
+              )}
+              <StatGrid state={state} t={t} />
+            </div>
+
+            {state.status === "optimal" && (
+              <SensitivityPanel state={state} t={t} />
             )}
-            <TableauView state={state} t={t} verbose={tweaks.tableauStyle === TABLEAU_STYLES.VERBOSE} lang={tweaks.lang} />
-            <StepBar
-              step={step}
-              total={history.length}
-              setStep={setStep}
-              playing={playing}
-              setPlaying={setPlaying}
-              t={t}
-            />
-            {tweaks.tableauStyle === TABLEAU_STYLES.VERBOSE && (
-              <Narration state={state} step={step} t={t} lang={tweaks.lang} />
+
+            {lp.type === "ilp" && (
+              <CutsPanel
+                lp={effectiveLP}
+                latestState={latestState}
+                onRemoveLast={handleRemoveLastCut}
+                onReset={handleResetCuts}
+                t={t}
+              />
             )}
-            <StatGrid state={state} t={t} />
           </div>
-
-          {state.status === "optimal" && (
-            <SensitivityPanel state={state} t={t} />
-          )}
-
-          {lp.type === "ilp" && (
-            <CutsPanel
-              lp={effectiveLP}
-              latestState={latestState}
-              onRemoveLast={handleRemoveLastCut}
-              onReset={handleResetCuts}
-              t={t}
-            />
-          )}
-        </div>
+        )}
       </div>
       )}
 

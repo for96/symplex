@@ -151,45 +151,52 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
     }
     return ticks;
   }
-  const xTicks = makeTicks(bb.xmin, bb.xmax);
-  const yTicks = makeTicks(bb.ymin, bb.ymax);
+  const xTicks = useMemoG(() => makeTicks(bb.xmin, bb.xmax), [bb.xmin, bb.xmax]);
+  const yTicks = useMemoG(() => makeTicks(bb.ymin, bb.ymax), [bb.ymin, bb.ymax]);
 
   // Level curves
   const cv = effective.c;
   const z_curr = current ? cv[0] * current.x + cv[1] * current.y : 0;
-  const levels = [];
-  if (Math.abs(cv[0]) > 1e-9 || Math.abs(cv[1]) > 1e-9) {
-    const span =
-      Math.abs(z_curr) * 1.5 +
-      Math.max(
-        Math.max(Math.abs(bb.xmin), Math.abs(bb.xmax)) * Math.abs(cv[0]),
-        Math.max(Math.abs(bb.ymin), Math.abs(bb.ymax)) * Math.abs(cv[1]),
-      );
-    const stepZ = niceStep(span / 6);
-    const zCorners = [
-      bb.xmin * cv[0] + bb.ymin * cv[1],
-      bb.xmin * cv[0] + bb.ymax * cv[1],
-      bb.xmax * cv[0] + bb.ymin * cv[1],
-      bb.xmax * cv[0] + bb.ymax * cv[1],
-    ];
-    let zmin = Math.floor(Math.min(...zCorners) / stepZ) * stepZ;
-    let zmax = Math.ceil(Math.max(...zCorners) / stepZ) * stepZ;
-    for (let z = zmin; z <= zmax + 1e-9; z += stepZ) levels.push(z);
-  }
+  const levels = useMemoG(() => {
+    const list = [];
+    if (Math.abs(cv[0]) > 1e-9 || Math.abs(cv[1]) > 1e-9) {
+      const span =
+        Math.abs(z_curr) * 1.5 +
+        Math.max(
+          Math.max(Math.abs(bb.xmin), Math.abs(bb.xmax)) * Math.abs(cv[0]),
+          Math.max(Math.abs(bb.ymin), Math.abs(bb.ymax)) * Math.abs(cv[1]),
+        );
+      const stepZ = niceStep(span / 6);
+      const zCorners = [
+        bb.xmin * cv[0] + bb.ymin * cv[1],
+        bb.xmin * cv[0] + bb.ymax * cv[1],
+        bb.xmax * cv[0] + bb.ymin * cv[1],
+        bb.xmax * cv[0] + bb.ymax * cv[1],
+      ];
+      let zmin = Math.floor(Math.min(...zCorners) / stepZ) * stepZ;
+      let zmax = Math.ceil(Math.max(...zCorners) / stepZ) * stepZ;
+      for (let z = zmin; z <= zmax + 1e-9; z += stepZ) list.push(z);
+    }
+    return list;
+  }, [cv, z_curr, bb.xmin, bb.xmax, bb.ymin, bb.ymax]);
 
   // Gradient
-  const gradLen = Math.hypot(cv[0], cv[1]);
-  const gradScale =
-    (Math.min(bb.xmax - bb.xmin, bb.ymax - bb.ymin) * 0.22) /
-    Math.max(gradLen, 1e-6);
-  const gradStart = {
-    x: bb.xmin + (bb.xmax - bb.xmin) * 0.12,
-    y: bb.ymin + (bb.ymax - bb.ymin) * 0.12,
-  };
-  const gradEnd = {
-    x: gradStart.x + cv[0] * gradScale * 0.6,
-    y: gradStart.y + cv[1] * gradScale * 0.6,
-  };
+  const gradGeom = useMemoG(() => {
+    const gradLen = Math.hypot(cv[0], cv[1]);
+    const gradScale =
+      (Math.min(bb.xmax - bb.xmin, bb.ymax - bb.ymin) * 0.22) /
+      Math.max(gradLen, 1e-6);
+    const gradStart = {
+      x: bb.xmin + (bb.xmax - bb.xmin) * 0.12,
+      y: bb.ymin + (bb.ymax - bb.ymin) * 0.12,
+    };
+    const gradEnd = {
+      x: gradStart.x + cv[0] * gradScale * 0.6,
+      y: gradStart.y + cv[1] * gradScale * 0.6,
+    };
+    return { gradStart, gradEnd };
+  }, [cv, bb.xmin, bb.xmax, bb.ymin, bb.ymax]);
+  const { gradStart, gradEnd } = gradGeom;
 
   const polyD = verts.length
     ? verts.map((p) => `${xScale(p.x)},${yScale(p.y)}`).join(" ")
