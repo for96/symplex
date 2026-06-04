@@ -84,10 +84,11 @@ function pushDualityHistory(lp) {
 }
 
 function lpToTextOneLine(lp, t) {
+  const firstObjIdx = lp.c.findIndex((v) => Math.abs(v) > 1e-9);
   const obj = lp.c
     .map((v, j) => {
       if (v === 0) return null;
-      const sign = v > 0 ? (j === 0 ? "" : "+") : "−";
+      const sign = v > 0 ? (j === firstObjIdx ? "" : "+") : "−";
       const abs = Math.abs(v);
       const c = abs === 1 ? "" : abs;
       return `${sign}${c}${(lp.varNames[j] || "x").replace("_", "")}`;
@@ -355,32 +356,35 @@ function DualityLPEditor({ lp, setLp, t }) {
 // Right-hand panel: the dual problem.
 function DualBlock({ dual, t }) {
   const fmt = Simplex.fmt;
-  const term = (v, j, names) => {
-    if (v === 0) return null;
-    const sign = v > 0 ? "+" : "−";
-    const abs = Math.abs(v);
-    const coef = abs === 1 ? "" : fmt(abs);
-    return (
-      <React.Fragment key={j}>
-        {" "}
-        <span className="mono dual-sign">{j === 0 && v > 0 ? "" : sign}</span>{" "}
-        <span className="mono">{coef}</span>
-        <VarName name={names[j]} />
-      </React.Fragment>
-    );
+  const renderLHS = (coefs, names) => {
+    const firstIdx = coefs.findIndex(v => Math.abs(v) > 1e-9);
+    return coefs.map((v, j) => {
+      if (v === 0) return null;
+      const sign = v > 0 ? "+" : "−";
+      const abs = Math.abs(v);
+      const coefStr = abs === 1 ? "" : fmt(abs);
+      return (
+        <React.Fragment key={j}>
+          {" "}
+          <span className="mono dual-sign">{j === firstIdx && v > 0 ? "" : sign}</span>{" "}
+          <span className="mono">{coefStr}</span>
+          <VarName name={names[j]} />
+        </React.Fragment>
+      );
+    });
   };
   return (
     <div className="dual-block">
       <span className="dual-line">
         <span className="dual-sign">{dual.objective}</span>{" "}
         <span style={{ fontStyle: "italic" }}>w</span> ={" "}
-        {dual.c.map((v, j) => term(v, j, dual.varNames))}
+        {renderLHS(dual.c, dual.varNames)}
       </span>
       <span className="dual-line dual-sign">{t.subjectTo}</span>
       {dual.constraints.map((c, i) => (
         <span className="dual-line" key={i}>
           {"  "}
-          {c.a.map((v, j) => term(v, j, dual.varNames))}{" "}
+          {renderLHS(c.a, dual.varNames)}{" "}
           <span className="mono">
             {c.op === "<=" ? "≤" : c.op === ">=" ? "≥" : "="} {fmt(c.b)}
           </span>
@@ -410,7 +414,7 @@ function FracDisplay({ value }) {
 function StepHeader({ idx, title }) {
   return (
     <div className="dy-step-head">
-      <span className="dy-step-num">{idx}.</span> <span className="dy-step-title">{title}</span>
+      <span className="dy-step-num">{idx}.</span> <span className="dy-step-title" dangerouslySetInnerHTML={{ __html: title }} />
     </div>
   );
 }
@@ -450,7 +454,7 @@ function PrimalActiveTable({ constraints, xStar, lp, t }) {
       <thead>
         <tr>
           <th>i</th>
-          <th>a<sub>i</sub><sup>T</sup> x*</th>
+          <th>a<sub>i</sub><sup>T</sup> x<sup>*</sup></th>
           <th>b<sub>i</sub></th>
           <th>{t.dyStatus}</th>
         </tr>
@@ -485,7 +489,7 @@ function DualActiveTable({ constraints, yStar, t }) {
       <thead>
         <tr>
           <th>j</th>
-          <th>y*<sup>T</sup> A<sub>j</sub></th>
+          <th>y<sup>*T</sup> A<sub>j</sub></th>
           <th>c<sub>j</sub></th>
           <th>{t.dyStatus}</th>
         </tr>
@@ -521,25 +525,23 @@ function SystemView({ eqs, unknowns, varSymbol, t }) {
       <tbody>
         {eqs.map((e, r) => (
           <tr key={r}>
-            {e.coefs
-              .map((co, k) => ({ co, k }))
-              .filter((term) => Math.abs(term.co) > 1e-9)
-              .map(({ co, k }, pos) => (
-              <React.Fragment key={k}>
-                {pos > 0 && (
-                  <td className="dy-op">
-                    {co >= 0 ? "+" : "−"}
-                  </td>
-                )}
-                <td className={"dy-coef " + (pos === 0 ? "first" : "")}>
-                  {pos === 0 && co < 0 && "−"}
-                  {Math.abs(co) === 1 ? "" : Simplex.fmt(Math.abs(co), 2)}
-                </td>
-                <td className="dy-var">
-                  <VarName name={`${varSymbol}_${unknowns[k] + 1}`} />
-                </td>
-              </React.Fragment>
-            ))}
+            <td className="dy-lhs">
+              {e.coefs
+                .map((co, k) => ({ co, k }))
+                .filter((term) => Math.abs(term.co) > 1e-9)
+                .map(({ co, k }, pos) => {
+                  const sign = pos > 0 ? (co >= 0 ? " + " : " − ") : (co < 0 ? "−" : "");
+                  const absCo = Math.abs(co);
+                  const coefStr = absCo === 1 ? "" : Simplex.fmt(absCo, 2);
+                  return (
+                    <React.Fragment key={k}>
+                      {sign && <span className="dy-op-sign">{sign}</span>}
+                      {coefStr && <span className="dy-coef-val">{coefStr}</span>}
+                      <VarName name={`${varSymbol}_${unknowns[k] + 1}`} />
+                    </React.Fragment>
+                  );
+                })}
+            </td>
             <td className="dy-eq">=</td>
             <td className="dy-rhs"><FracDisplay value={e.rhs} /></td>
           </tr>
@@ -555,7 +557,7 @@ function SolutionVector({ values, symbol, t }) {
       {values.map((v, i) => (
         <span key={i} className="dy-sol-item">
           <VarName name={`${symbol}_${i + 1}`} />
-          <span className="dy-eq">*</span>
+          <sup>*</sup>
           <span className="dy-eq">=</span>
           <FracDisplay value={v} />
           {i < values.length - 1 && <span className="sep">,</span>}
@@ -573,13 +575,89 @@ function ParamName({ symbol, index }) {
   return (
     <span>
       <VarName name={`${symbol}_${index + 1}`} />
-      <span className="dy-eq">*</span>
+      <sup>*</sup>
     </span>
   );
 }
 
 function AffineExpr({ base, coef, param }) {
   if (Math.abs(coef) < 1e-9) return <FracDisplay value={base} />;
+
+  const fb = Simplex.toFraction(base);
+  const fc = Simplex.toFraction(coef);
+  const isRational = fb.den <= 100 && fc.den <= 100 && !fb.approx && !fc.approx;
+
+  if (isRational) {
+    const gcd = (x, y) => {
+      x = Math.abs(x);
+      y = Math.abs(y);
+      while (y) {
+        const t = y;
+        y = x % y;
+        x = t;
+      }
+      return x;
+    };
+    const lcm = (x, y) => (x * y) / gcd(x, y);
+    const D = lcm(fb.den, fc.den);
+    const nB = fb.num * (D / fb.den);
+    const nC = fc.num * (D / fc.den);
+
+    if (D === 1) {
+      if (nB === 0) {
+        return (
+          <span>
+            {nC < 0 ? "−" : ""}
+            {Math.abs(nC) !== 1 && <span>{Math.abs(nC)}·</span>}
+            <ParamName symbol={param.symbol} index={param.index} />
+          </span>
+        );
+      } else {
+        return (
+          <span className="dy-affine-expr">
+            <span>{nB}</span>
+            <span className="dy-eq">{nC > 0 ? "+" : "−"}</span>
+            {Math.abs(nC) !== 1 && <span>{Math.abs(nC)}·</span>}
+            <ParamName symbol={param.symbol} index={param.index} />
+          </span>
+        );
+      }
+    } else {
+      if (nB === 0) {
+        return (
+          <span className="dy-affine-expr">
+            {nC < 0 && <span className="dy-eq">−</span>}
+            <span className="frac" style={{ display: "inline-flex", alignItems: "center" }}>
+              <span className="frac-stack">
+                <span className="n">
+                  {Math.abs(nC) !== 1 && <span>{Math.abs(nC)}·</span>}
+                  <ParamName symbol={param.symbol} index={param.index} />
+                </span>
+                <span className="d">{D}</span>
+              </span>
+            </span>
+          </span>
+        );
+      } else {
+        return (
+          <span className="dy-affine-expr">
+            <span className="frac" style={{ display: "inline-flex", alignItems: "center" }}>
+              <span className="frac-stack">
+                <span className="n">
+                  {nB}
+                  {nC > 0 ? " + " : " − "}
+                  {Math.abs(nC) !== 1 && <span>{Math.abs(nC)}·</span>}
+                  <ParamName symbol={param.symbol} index={param.index} />
+                </span>
+                <span className="d">{D}</span>
+              </span>
+            </span>
+          </span>
+        );
+      }
+    }
+  }
+
   const showBase = Math.abs(base) > 1e-9;
   const absCoef = Math.abs(coef);
   return (
@@ -604,17 +682,26 @@ function IntervalDisplay({ low, high }) {
 
 function SolutionRange({ range, symbol, t }) {
   const param = { symbol, index: range.parameterIndex };
+  const items = [];
+  range.base.forEach((base, i) => {
+    if (i === range.parameterIndex) return;
+    items.push(
+      <span key={i} className="dy-sol-item">
+        <VarName name={`${symbol}_${i + 1}`} />
+        <sup>*</sup>
+        <span className="dy-eq">=</span>
+        <AffineExpr base={base} coef={range.direction[i]} param={param} />
+      </span>
+    );
+  });
   return (
     <div className="dy-solution-range">
       <div className="dy-solution">
-        {range.base.map((base, i) => (
-          <span key={i} className="dy-sol-item">
-            <VarName name={`${symbol}_${i + 1}`} />
-            <span className="dy-eq">*</span>
-            <span className="dy-eq">=</span>
-            <AffineExpr base={base} coef={range.direction[i]} param={param} />
-            {i < range.base.length - 1 && <span className="sep">,</span>}
-          </span>
+        {items.map((item, idx) => (
+          <React.Fragment key={idx}>
+            {item}
+            {idx < items.length - 1 && <span className="sep">,</span>}
+          </React.Fragment>
         ))}
       </div>
       <div className="dy-frees">
@@ -676,7 +763,7 @@ function DualitySensitivityPanel({ data, lp, t }) {
                 [<FracDisplay value={r.b + r.low} /> , <FracDisplay value={r.b + r.high} />]
               </td>
               <td>
-                z* + δ<sub>{i + 1}</sub>·<FracDisplay value={r.dualValue || 0} />
+                z<sup>*</sup> + δ<sub>{i + 1}</sub>·<FracDisplay value={r.dualValue || 0} />
               </td>
             </tr>
           ))}
@@ -903,22 +990,20 @@ function DualityWorkspace({ t }) {
                   className={knownType === "primal" ? "active" : ""}
                   onClick={() => setKnownType("primal")}
                   aria-pressed={knownType === "primal"}
-                >
-                  {t.dyKnownPrimal}
-                </button>
+                  dangerouslySetInnerHTML={{ __html: t.dyKnownPrimal }}
+                />
                 <button
                   className={knownType === "dual" ? "active" : ""}
                   onClick={() => setKnownType("dual")}
                   aria-pressed={knownType === "dual"}
-                >
-                  {t.dyKnownDual}
-                </button>
+                  dangerouslySetInnerHTML={{ __html: t.dyKnownDual }}
+                />
               </div>
             </div>
             <div className="dy-vector-input">
               {knownType === "primal" ? (
                 <>
-                  <span className="dy-vec-label">x* =</span>
+                  <span className="dy-vec-label">x<sup>*</sup> =</span>
                   <span className="dy-vec-tuple">
                     {"("}
                     {knownX.map((v, j) => (
@@ -940,7 +1025,7 @@ function DualityWorkspace({ t }) {
                 </>
               ) : (
                 <>
-                  <span className="dy-vec-label">y* =</span>
+                  <span className="dy-vec-label">y<sup>*</sup> =</span>
                   <span className="dy-vec-tuple">
                     {"("}
                     {knownY.map((v, i) => (
@@ -1039,7 +1124,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.zeros.map((i) => (
                   <span key={i} className="dy-deduction">
-                    <VarName name={`y_${i + 1}`} /><span className="dy-eq">*</span><span className="dy-eq">=</span> 0
+                    <VarName name={`y_${i + 1}`} /><sup>*</sup><span className="dy-eq">=</span> 0
                   </span>
                 ))}
               </div>
@@ -1064,7 +1149,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.positive.map((j) => (
                   <span key={j} className="dy-deduction">
-                    <VarName name={lp.varNames[j]} /><span className="dy-eq">*</span> ≠ 0 ⇒ <span className="dy-tag active">D{j + 1} {t.dyActive}</span>
+                    <VarName name={lp.varNames[j]} /><sup>*</sup> ≠ 0 ⇒ <span className="dy-tag active">D{j + 1} {t.dyActive}</span>
                   </span>
                 ))}
               </div>
@@ -1101,7 +1186,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.zeros.map((j) => (
                   <span key={j} className="dy-deduction">
-                    <VarName name={lp.varNames[j]} /><span className="dy-eq">*</span><span className="dy-eq">=</span> 0
+                    <VarName name={lp.varNames[j]} /><sup>*</sup><span className="dy-eq">=</span> 0
                   </span>
                 ))}
               </div>
@@ -1126,7 +1211,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.positive.map((i) => (
                   <span key={i} className="dy-deduction">
-                    <VarName name={`y_${i + 1}`} /><span className="dy-eq">*</span> ≠ 0 ⇒ <span className="dy-tag active">C{i + 1} {t.dyActive}</span>
+                    <VarName name={`y_${i + 1}`} /><sup>*</sup> ≠ 0 ⇒ <span className="dy-tag active">C{i + 1} {t.dyActive}</span>
                   </span>
                 ))}
               </div>
@@ -1255,9 +1340,9 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
           <StepHeader idx={stepIdx} title={t.dyStepStrongDuality} />
           <div className="dy-step-body">
             <div className="dy-strong-duality">
-              <span>z = c<sup>T</sup>x* = {valueNode(z, zDir)}</span>
+              <span>z = c<sup>T</sup>x<sup>*</sup> = {valueNode(z, zDir)}</span>
               <span className="sep">·</span>
-              <span>w = b<sup>T</sup>y* = {valueNode(w, wDir)}</span>
+              <span>w = b<sup>T</sup>y<sup>*</sup> = {valueNode(w, wDir)}</span>
               <span className="sep">·</span>
               <span className={matches ? "dy-tag active" : "dy-tag inactive"}>
                 {matches ? `✓ z = w (${t.dyStrongDuality})` : `✗ z ≠ w`}

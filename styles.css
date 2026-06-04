@@ -1725,31 +1725,30 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   font-family: var(--font-mono);
   font-size: 13px;
 }
-.dy-system td.dy-coef {
+.dy-system td.dy-lhs {
   text-align: right;
-  color: var(--ink);
   white-space: nowrap;
-}
-.dy-system td.dy-op {
-  padding: 0 8px;
-  color: var(--ink-2);
-  text-align: center;
-}
-.dy-system td.dy-coef.first {
-  padding-left: 8px;
-}
-.dy-system td.dy-var {
-  padding-left: 1px;
-  padding-right: 6px;
+  padding-right: 0;
   color: var(--ink);
 }
 .dy-system td.dy-eq {
-  padding: 0 8px;
+  padding: 0 10px;
   color: var(--ink-3);
+  text-align: center;
 }
 .dy-system td.dy-rhs {
   color: var(--dy-ko);
   font-weight: 600;
+  text-align: left;
+  padding-left: 0;
+}
+.dy-op-sign {
+  color: var(--ink-2);
+  padding: 0 4px;
+}
+.dy-coef-val {
+  color: var(--ink);
+  margin-right: 1px;
 }
 
 /* Solution vector display */

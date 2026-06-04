@@ -497,38 +497,45 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
 
 function lpToTextOneLine(lp, t) {
   const names = lpVarNames(lp);
+  const firstObjIdx = lp.c.findIndex((v) => Math.abs(v) > 1e-9);
   const obj = lp.c
     .map((v, j) => {
       if (v === 0) return null;
-      const sign = v > 0 ? (j === 0 ? "" : "+") : "−";
+      const sign = v > 0 ? (j === firstObjIdx ? "" : "+") : "−";
       const abs = Math.abs(v);
       const c = abs === 1 ? "" : abs;
       return `${sign}${c}${names[j].replace("_", "")}`;
     })
     .filter(Boolean)
     .join("");
-  const abbr = (t && t.constraintsAbbr) || "constr.";
+  const abbr = (t && t.constraintsAbbr) || "vinc.";
   return `${obj} · ${lp.constraints.length} ${abbr}`;
 }
 
 function lpToText(lp) {
   const names = lpVarNames(lp);
-  const sign = (v, first) => {
-    if (v === 0) return "";
-    if (v > 0) return first ? `${v}` : ` + ${v}`;
-    return first ? `${v}` : ` - ${Math.abs(v)}`;
+  const formatTerm = (v, j, firstIdx) => {
+    if (v === 0) return null;
+    const isFirst = j === firstIdx;
+    const sign = v > 0 ? (isFirst ? "" : " + ") : (isFirst ? "-" : " - ");
+    const abs = Math.abs(v);
+    const coef = abs === 1 ? "" : abs;
+    return `${sign}${coef}${formatVar(names[j])}`;
   };
+
   let s = `${lp.objective} z = `;
+  const firstObjIdx = lp.c.findIndex((v) => Math.abs(v) > 1e-9);
   const objTerms = lp.c
-    .map((v, j) => `${sign(v, j === 0)}${formatVar(names[j])}`)
+    .map((v, j) => formatTerm(v, j, firstObjIdx))
     .filter(Boolean)
     .join("");
   s += objTerms || "0";
   s += "\nsubject to\n";
   for (const c of lp.constraints) {
     s += "  ";
+    const firstLhsIdx = c.a.findIndex((v) => Math.abs(v) > 1e-9);
     const lhsTerms = c.a
-      .map((v, j) => `${sign(v, j === 0)}${formatVar(names[j])}`)
+      .map((v, j) => formatTerm(v, j, firstLhsIdx))
       .filter(Boolean)
       .join("");
     s += lhsTerms || "0";
