@@ -68,7 +68,7 @@
   --warn: oklch(78% 0.13 65);
   --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.45);
 }
-.theme-dark body { background: var(--bg); color: var(--ink); }
+.theme-dark { background: var(--bg); color: var(--ink); }
 /* In dark mode the "active" pill on a button should not invert to chalk-on-ink
    (which is what light mode does); instead use accent so it reads as emphasis. */
 .theme-dark .app-tools button.active,
