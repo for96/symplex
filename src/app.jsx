@@ -278,7 +278,15 @@ function App() {
     >
       <header className={"app-header" + (menuOpen ? " menu-open" : "")}>
         <div>
-          <h1 className="app-title">
+          <h1
+            className="app-title"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.innerWidth > 480) {
+                window.location.reload();
+              }
+            }}
+            title={typeof window !== "undefined" && window.innerWidth > 480 ? (tweaks.lang === "it" ? "Ricarica la pagina" : "Reload page") : undefined}
+          >
             {t.appTitlePrefix} <em>{t.appTitleEm}</em>
           </h1>
         </div>

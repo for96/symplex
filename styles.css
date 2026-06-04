@@ -157,6 +157,7 @@ body {
   padding: 18px 28px 14px;
   border-bottom: 1px solid var(--rule);
   background: var(--bg-paper);
+  color: var(--ink);
   gap: 24px;
 }
 .app-title {
@@ -166,6 +167,15 @@ body {
   letter-spacing: -0.01em;
   margin: 0;
   font-style: italic;
+}
+@media (min-width: 481px) {
+  .app-title {
+    cursor: pointer;
+    user-select: none;
+  }
+  .app-title:hover {
+    opacity: 0.8;
+  }
 }
 .app-title em {
   font-style: normal;
