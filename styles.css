@@ -1757,13 +1757,22 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   font-family: var(--font-mono);
   font-size: 13px;
 }
-.dy-system td.dy-sys-col {
+.dy-system td.dy-sys-term {
   text-align: right;
   white-space: nowrap;
-  padding: 4px 6px;
+  padding: 4px 2px;
   color: var(--ink);
 }
-.dy-system td.dy-sys-col.empty {
+.dy-system td.dy-sys-term.empty {
+  padding: 0;
+}
+.dy-system td.dy-sys-op {
+  text-align: center;
+  white-space: nowrap;
+  padding: 0 8px;
+  color: var(--ink-2);
+}
+.dy-system td.dy-sys-op.empty {
   padding: 0;
 }
 .dy-system td.dy-eq {
