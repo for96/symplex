@@ -722,8 +722,25 @@ function DualityWorkspace({ t }) {
 
   const sensitivity = useMemoD(() => {
     if (!result || !result.ok) return { ok: false, reason: "infeasible-or-missing" };
-    const xStar = knownType === "primal" ? knownX : result.x;
-    const yStar = knownType === "primal" ? result.y : knownY;
+    
+    function representativeFromRange(range) {
+      if (!range || !range.feasible) return null;
+      let t = 0;
+      if (isFinite(range.low)) t = range.low;
+      else if (isFinite(range.high)) t = range.high;
+      return range.base.map((b, i) => b + t * range.direction[i]);
+    }
+
+    let xStar = knownType === "primal" ? knownX : result.x;
+    if (!xStar && result.xRange) {
+      xStar = representativeFromRange(result.xRange);
+    }
+
+    let yStar = knownType === "primal" ? result.y : knownY;
+    if (!yStar && result.yRange) {
+      yStar = representativeFromRange(result.yRange);
+    }
+
     if (!xStar || !yStar) return { ok: false, reason: "infeasible-or-missing" };
     return Duality.rhsSensitivity(lp, xStar, yStar);
   }, [lp, result, knownType, knownX, knownY]);
