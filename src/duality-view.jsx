@@ -688,9 +688,7 @@ function DualityWorkspace({ t }) {
   // values on every coefficient edit, only when the dimensions change.
   useEffectD(() => {
     if (knownX.length !== lp.c.length) {
-      const next = new Array(lp.c.length).fill(null);
-      for (let j = 0; j < Math.min(knownX.length, lp.c.length); j++) next[j] = knownX[j];
-      setKnownX(next);
+      setKnownX(new Array(lp.c.length).fill(null));
     }
     if (!lp.varSigns || lp.varSigns.length !== lp.c.length) {
       const nextSigns = lp.varSigns ? lp.varSigns.slice(0, lp.c.length) : [];
@@ -700,9 +698,7 @@ function DualityWorkspace({ t }) {
   }, [lp.c.length]);
   useEffectD(() => {
     if (knownY.length !== lp.constraints.length) {
-      const next = new Array(lp.constraints.length).fill(null);
-      for (let i = 0; i < Math.min(knownY.length, lp.constraints.length); i++) next[i] = knownY[i];
-      setKnownY(next);
+      setKnownY(new Array(lp.constraints.length).fill(null));
     }
   }, [lp.constraints.length]);
 
@@ -788,7 +784,12 @@ function DualityWorkspace({ t }) {
                     <button
                       key={h.fp}
                       className={"history-item" + (isCurrent ? " is-current" : "")}
-                      onClick={() => setLp(JSON.parse(JSON.stringify(h.lp)))}
+                      onClick={() => {
+                        const newLp = JSON.parse(JSON.stringify(h.lp));
+                        setLp(newLp);
+                        setKnownX(new Array(newLp.c.length).fill(null));
+                        setKnownY(new Array(newLp.constraints.length).fill(null));
+                      }}
                       title={new Date(h.ts).toLocaleString()}
                     >
                       <span className="hi-obj">{h.lp.objective}</span>{" "}

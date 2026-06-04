@@ -7,11 +7,12 @@
   const EPS = 1e-7;
 
   function lineIntersect(a1, b1, c1, a2, b2, c2) {
+    const n1 = Math.hypot(a1, b1);
+    const n2 = Math.hypot(a2, b2);
+    if (n1 < 1e-9 || n2 < 1e-9) return null;
+    const detNormalized = (a1 / n1) * (b2 / n2) - (a2 / n2) * (b1 / n1);
+    if (Math.abs(detNormalized) < 1e-9) return null;
     const det = a1 * b2 - a2 * b1;
-    // Why: 1e-12 is a determinant test (product of two coefficient magnitudes),
-    // not a coordinate test — much tighter than EPS so we still detect truly
-    // parallel lines without rejecting near-parallel-but-distinct ones.
-    if (Math.abs(det) < 1e-12) return null;
     return {
       x: (c1 * b2 - c2 * b1) / det,
       y: (a1 * c2 - a2 * c1) / det,
@@ -24,9 +25,11 @@
     if (p.x < -tol || p.y < -tol) return false;
     for (const c of lp.constraints) {
       const v = c.a[0] * p.x + c.a[1] * p.y;
-      if (c.op === "<=" && v > c.b + tol) return false;
-      if (c.op === ">=" && v < c.b - tol) return false;
-      if (c.op === "=" && Math.abs(v - c.b) > tol) return false;
+      const norm = Math.hypot(c.a[0], c.a[1]);
+      const effectiveTol = norm > 1e-9 ? tol * norm : tol;
+      if (c.op === "<=" && v > c.b + effectiveTol) return false;
+      if (c.op === ">=" && v < c.b - effectiveTol) return false;
+      if (c.op === "=" && Math.abs(v - c.b) > effectiveTol) return false;
     }
     return true;
   }

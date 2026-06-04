@@ -59,7 +59,7 @@ function lpFingerprint(lp) {
   const bounds = [];
   for (let j = 0; j < n; j++) {
     const b = (lp.varBounds || [])[j] || { kind: "continuous", ub: Infinity };
-    bounds.push([b.kind || "continuous", isFinite(b.ub) ? b.ub : "inf"]);
+    bounds.push([b.kind || "continuous", (typeof b.ub === "number" && isFinite(b.ub)) ? b.ub : "inf"]);
   }
   return JSON.stringify([
     lp.type || "lp",

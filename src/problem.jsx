@@ -124,7 +124,10 @@ function VbUbInput({ value, isBinary, onChange }) {
 function ensureLPBounds(lp) {
   const bounds = (lp.varBounds || []).slice();
   while (bounds.length < lp.c.length) bounds.push({ kind: "continuous", ub: Infinity });
-  return bounds;
+  return bounds.map((b) => {
+    const ub = (typeof b.ub === "number" && isFinite(b.ub)) ? b.ub : Infinity;
+    return { ...b, ub };
+  });
 }
 
 function defaultVarName(j) {

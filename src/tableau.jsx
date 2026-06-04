@@ -14,7 +14,8 @@ function Frac({ value }) {
   }
   const sign = f.num < 0 ? "−" : "";
   return (
-    <span className="frac">
+    <span className="frac" style={{ display: "inline-flex", alignItems: "center" }}>
+      {f.approx && <span style={{ marginRight: 2, opacity: 0.8 }}>≈</span>}
       {sign}
       <span className="frac-stack">
         <span className="n">{Math.abs(f.num)}</span>
