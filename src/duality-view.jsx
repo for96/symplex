@@ -682,11 +682,68 @@ function DualitySensitivityPanel({ data, lp, t }) {
 }
 
 function DualityWorkspace({ t }) {
-  const [lp, setLp] = useStateD(DUALITY_DEFAULT_LP);
-  const [knownType, setKnownType] = useStateD("primal"); // "primal" or "dual"
-  const [knownX, setKnownX] = useStateD(DUALITY_DEFAULT_X);
-  const [knownY, setKnownY] = useStateD([0, 0, 0]);
+  const [lp, setLp] = useStateD(() => {
+    try {
+      const stored = localStorage.getItem("duality_lp_current");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === "object") return parsed;
+      }
+    } catch (e) {}
+    return DUALITY_DEFAULT_LP;
+  });
+  const [knownType, setKnownType] = useStateD(() => {
+    try {
+      const stored = localStorage.getItem("duality_known_type");
+      if (stored) return stored;
+    } catch (e) {}
+    return "primal";
+  });
+  const [knownX, setKnownX] = useStateD(() => {
+    try {
+      const stored = localStorage.getItem("duality_known_x");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return DUALITY_DEFAULT_X;
+  });
+  const [knownY, setKnownY] = useStateD(() => {
+    try {
+      const stored = localStorage.getItem("duality_known_y");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [0, 0, 0];
+  });
   const [dyHistory, setDyHistory] = useStateD(() => loadDualityHistory());
+
+  useEffectD(() => {
+    try {
+      localStorage.setItem("duality_lp_current", JSON.stringify(lp));
+    } catch (e) {}
+  }, [lp]);
+
+  useEffectD(() => {
+    try {
+      localStorage.setItem("duality_known_type", knownType);
+    } catch (e) {}
+  }, [knownType]);
+
+  useEffectD(() => {
+    try {
+      localStorage.setItem("duality_known_x", JSON.stringify(knownX));
+    } catch (e) {}
+  }, [knownX]);
+
+  useEffectD(() => {
+    try {
+      localStorage.setItem("duality_known_y", JSON.stringify(knownY));
+    } catch (e) {}
+  }, [knownY]);
 
   // Keep the size of knownX / knownY / varSigns in sync with the LP shape. We don't reset
   // values on every coefficient edit, only when the dimensions change.

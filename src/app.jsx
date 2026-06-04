@@ -116,15 +116,81 @@ function pushHistory(lp) {
 const MOBILE_TABS = { PROBLEM: "problem", GEOMETRY: "geometry", TABLEAU: "tableau", DUALITY: "duality" };
 
 function App() {
-  const [lp, setLp] = useStateApp(DEFAULT_LP);
-  const [step, setStep] = useStateApp(0);
+  const [lp, setLp] = useStateApp(() => {
+    try {
+      const stored = localStorage.getItem("symplex_lp_current");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === "object") return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_LP;
+  });
+  const [step, setStep] = useStateApp(() => {
+    try {
+      const stored = localStorage.getItem("symplex_step");
+      if (stored) return parseInt(stored, 10) || 0;
+    } catch (e) {}
+    return 0;
+  });
   const [playing, setPlaying] = useStateApp(false);
   const [lpHistory, setLpHistory] = useStateApp(() => loadHistory());
   const [tweaks, setTweak] = window.useTweaks(TWEAK_DEFAULTS);
-  const [appliedCuts, setAppliedCuts] = useStateApp([]);
-  const [mode, setMode] = useStateApp(MODES.SIMPLEX);
-  const [mobileSection, setMobileSection] = useStateApp(MOBILE_TABS.PROBLEM);
+  const [appliedCuts, setAppliedCuts] = useStateApp(() => {
+    try {
+      const stored = localStorage.getItem("symplex_applied_cuts");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [mode, setMode] = useStateApp(() => {
+    try {
+      const stored = localStorage.getItem("symplex_mode");
+      if (stored) return stored;
+    } catch (e) {}
+    return MODES.SIMPLEX;
+  });
+  const [mobileSection, setMobileSection] = useStateApp(() => {
+    try {
+      const stored = localStorage.getItem("symplex_mobile_section");
+      if (stored) return stored;
+    } catch (e) {}
+    return MOBILE_TABS.PROBLEM;
+  });
   const [menuOpen, setMenuOpen] = useStateApp(false);
+
+  useEffectApp(() => {
+    try {
+      localStorage.setItem("symplex_lp_current", JSON.stringify(lp));
+    } catch (e) {}
+  }, [lp]);
+
+  useEffectApp(() => {
+    try {
+      localStorage.setItem("symplex_step", String(step));
+    } catch (e) {}
+  }, [step]);
+
+  useEffectApp(() => {
+    try {
+      localStorage.setItem("symplex_applied_cuts", JSON.stringify(appliedCuts));
+    } catch (e) {}
+  }, [appliedCuts]);
+
+  useEffectApp(() => {
+    try {
+      localStorage.setItem("symplex_mode", mode);
+    } catch (e) {}
+  }, [mode]);
+
+  useEffectApp(() => {
+    try {
+      localStorage.setItem("symplex_mobile_section", mobileSection);
+    } catch (e) {}
+  }, [mobileSection]);
 
   // Expand variable bounds (kind="binary" → x ≤ 1, finite ub → x ≤ ub) into
   // explicit constraints. The solver and downstream display work on this
