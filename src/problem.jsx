@@ -716,6 +716,45 @@ function DualPanel({ lp, state, t }) {
               <Frac value={zStar} />
             </span>
           </div>
+          {(() => {
+            const sensData = window.Simplex.sensitivity(state);
+            if (!sensData || !sensData.rhsRanges) return null;
+            return (
+              <div className="opt-sens-block" style={{ marginTop: 12, borderTop: "1px solid var(--rule)", paddingTop: 10, width: "100%" }}>
+                <div className="opt-sens-title" style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: "var(--ink-1)" }}>
+                  {t.sensitivity} (b<sub>i</sub>)
+                </div>
+                <table className="sens-table" style={{ width: "100%", fontSize: 11 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", paddingBottom: 4 }}>{t.constraintLabel}</th>
+                      <th style={{ textAlign: "right", paddingBottom: 4 }}>b<sub>i</sub></th>
+                      <th style={{ textAlign: "right", paddingBottom: 4 }}>{t.rhsRange}</th>
+                      <th style={{ textAlign: "right", paddingBottom: 4 }}>y<sub>i</sub>*</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sensData.rhsRanges.map((r, i) => {
+                      const oc = state.originalLP && state.originalLP.constraints[i];
+                      if (!oc) return null;
+                      const lowVal = oc.b + r.low;
+                      const highVal = oc.b + r.high;
+                      return (
+                        <tr key={i}>
+                          <td style={{ textAlign: "left", padding: "3px 0" }}>C{i + 1}</td>
+                          <td style={{ textAlign: "right", padding: "3px 0" }}><Frac value={oc.b} /></td>
+                          <td style={{ textAlign: "right", padding: "3px 0" }}>
+                            [<Frac value={lowVal} /> , <Frac value={highVal} />]
+                          </td>
+                          <td style={{ textAlign: "right", padding: "3px 0" }}><Frac value={yStar[i] ?? 0} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
