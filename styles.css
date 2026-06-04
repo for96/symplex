@@ -403,6 +403,38 @@ body {
   color: var(--ink);
 }
 .col:last-child { border-right: none; }
+
+/* Custom scrollbars for scrollable columns and workspaces to prevent layout shifts */
+.col.left,
+.col.right,
+.duality-workspace {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-2) transparent;
+}
+.col.left::-webkit-scrollbar,
+.col.right::-webkit-scrollbar,
+.duality-workspace::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.col.left::-webkit-scrollbar-track,
+.col.right::-webkit-scrollbar-track,
+.duality-workspace::-webkit-scrollbar-track {
+  background: transparent;
+}
+.col.left::-webkit-scrollbar-thumb,
+.col.right::-webkit-scrollbar-thumb,
+.duality-workspace::-webkit-scrollbar-thumb {
+  background-color: var(--rule-2);
+  border-radius: 3px;
+}
+.col.left::-webkit-scrollbar-thumb:hover,
+.col.right::-webkit-scrollbar-thumb:hover,
+.duality-workspace::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-3);
+}
+
 .col.center {
   display: flex;
   flex-direction: column;
@@ -1725,11 +1757,14 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   font-family: var(--font-mono);
   font-size: 13px;
 }
-.dy-system td.dy-lhs {
+.dy-system td.dy-sys-col {
   text-align: right;
   white-space: nowrap;
-  padding-right: 0;
+  padding: 4px 6px;
   color: var(--ink);
+}
+.dy-system td.dy-sys-col.empty {
+  padding: 0;
 }
 .dy-system td.dy-eq {
   padding: 0 10px;

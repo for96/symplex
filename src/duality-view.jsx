@@ -523,29 +523,32 @@ function SystemView({ eqs, unknowns, varSymbol, t }) {
   return (
     <table className="dy-system">
       <tbody>
-        {eqs.map((e, r) => (
-          <tr key={r}>
-            <td className="dy-lhs">
-              {e.coefs
-                .map((co, k) => ({ co, k }))
-                .filter((term) => Math.abs(term.co) > 1e-9)
-                .map(({ co, k }, pos) => {
-                  const sign = pos > 0 ? (co >= 0 ? " + " : " − ") : (co < 0 ? "−" : "");
-                  const absCo = Math.abs(co);
-                  const coefStr = absCo === 1 ? "" : Simplex.fmt(absCo, 2);
-                  return (
-                    <React.Fragment key={k}>
-                      {sign && <span className="dy-op-sign">{sign}</span>}
-                      {coefStr && <span className="dy-coef-val">{coefStr}</span>}
-                      <VarName name={`${varSymbol}_${unknowns[k] + 1}`} />
-                    </React.Fragment>
-                  );
-                })}
-            </td>
-            <td className="dy-eq">=</td>
-            <td className="dy-rhs"><FracDisplay value={e.rhs} /></td>
-          </tr>
-        ))}
+        {eqs.map((e, r) => {
+          const firstNonZeroK = e.coefs.findIndex((co) => Math.abs(co) > 1e-9);
+          return (
+            <tr key={r}>
+              {unknowns.map((_, k) => {
+                const co = e.coefs[k];
+                if (Math.abs(co) <= 1e-9) {
+                  return <td key={k} className="dy-sys-col empty"></td>;
+                }
+                const isFirst = k === firstNonZeroK;
+                const sign = co > 0 ? (isFirst ? "" : "+") : "−";
+                const absCo = Math.abs(co);
+                const coefStr = absCo === 1 ? "" : Simplex.fmt(absCo, 2);
+                return (
+                  <td key={k} className="dy-sys-col">
+                    {sign && <span className="dy-op-sign">{sign}</span>}
+                    {coefStr && <span className="dy-coef-val">{coefStr}</span>}
+                    <VarName name={`${varSymbol}_${unknowns[k] + 1}`} />
+                  </td>
+                );
+              })}
+              <td className="dy-eq">=</td>
+              <td className="dy-rhs"><FracDisplay value={e.rhs} /></td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
