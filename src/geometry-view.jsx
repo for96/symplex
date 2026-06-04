@@ -74,6 +74,7 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
   const dualLP = useMemoG(() => buildDualGeomLP(lp), [lp]);
   const canDual = !!dualLP;
   const effective = mode === "dual" && canDual ? dualLP : lpWithCuts;
+  const is2D = effective.c.length === 2;
   // Reset to primal if dual not available
   useEffectG(() => {
     if (mode === "dual" && !canDual) setMode("primal");
@@ -82,55 +83,13 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
   // IMPORTANT: all hooks must be called unconditionally. The early-return for
   // non-2D LPs below would otherwise skip the useMemo calls and trigger
   // "Rendered fewer hooks than expected" when the user adds a 3rd decision var.
-  const bb = useMemoG(() => Geom.bounds(effective), [effective]);
-  const verts = useMemoG(() => Geom.vertices(effective), [effective]);
+  const bb = useMemoG(
+    () => (is2D ? Geom.bounds(effective) : { xmin: 0, xmax: 3, ymin: 0, ymax: 3 }),
+    [effective, is2D],
+  );
+  const verts = useMemoG(() => (is2D ? Geom.vertices(effective) : []), [effective, is2D]);
 
-  if (effective.c.length !== 2) {
-    return (
-      <div className="geom-wrap" data-screen-label="geometry">
-        <div className="geom-head">
-          <div className="section-title" style={{ margin: 0 }}>
-            {t.geometry}
-          </div>
-        </div>
-        <div className="geom-svg-wrap" ref={wrapRef}>
-          <div className="geom-no">{t.noGeometry}</div>
-        </div>
-      </div>
-    );
-  }
-
-  const W = size.w;
-  const H = size.h;
-  const compactPlot = W <= 520;
-  const margin = compactPlot
-    ? { top: 8, right: 8, bottom: 8, left: 8 }
-    : { top: 24, right: 32, bottom: 30, left: 40 };
-  const plotW = W - margin.left - margin.right;
-  const plotH = H - margin.top - margin.bottom;
-
-  const xScale = (x) =>
-    margin.left + ((x - bb.xmin) / (bb.xmax - bb.xmin)) * plotW;
-  const yScale = (y) =>
-    margin.top + (1 - (y - bb.ymin) / (bb.ymax - bb.ymin)) * plotH;
-
-  // Decision points along history (for path). Only meaningful in primal mode.
-  const pathPoints =
-    mode === "primal"
-      ? history
-          .filter((s) => s.iteration >= 0)
-          .map((s) => {
-            const pt = Simplex.decisionPoint(s);
-            return { x: pt[0] || 0, y: pt[1] || 0 };
-          })
-      : [];
-
-  const current =
-    mode === "primal"
-      ? pathPoints[step] || pathPoints[0] || { x: 0, y: 0 }
-      : null;
-
-  // Tick generator
+  // Tick generator functions placed above hooks so they are available
   function niceStep(s) {
     const exp = Math.floor(Math.log10(s));
     const f = s / Math.pow(10, exp);
@@ -153,6 +112,22 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
   }
   const xTicks = useMemoG(() => makeTicks(bb.xmin, bb.xmax), [bb.xmin, bb.xmax]);
   const yTicks = useMemoG(() => makeTicks(bb.ymin, bb.ymax), [bb.ymin, bb.ymax]);
+
+  // Decision points along history (for path). Only meaningful in primal mode.
+  const pathPoints =
+    mode === "primal"
+      ? history
+          .filter((s) => s.iteration >= 0)
+          .map((s) => {
+            const pt = Simplex.decisionPoint(s);
+            return { x: pt[0] || 0, y: pt[1] || 0 };
+          })
+      : [];
+
+  const current =
+    mode === "primal"
+      ? pathPoints[step] || pathPoints[0] || { x: 0, y: 0 }
+      : null;
 
   // Level curves
   const cv = effective.c;
@@ -198,11 +173,41 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
   }, [cv, bb.xmin, bb.xmax, bb.ymin, bb.ymax]);
   const { gradStart, gradEnd } = gradGeom;
 
+  if (!is2D) {
+    return (
+      <div className="geom-wrap" data-screen-label="geometry">
+        <div className="geom-head">
+          <div className="section-title" style={{ margin: 0 }}>
+            {t.geometry}
+          </div>
+        </div>
+        <div className="geom-svg-wrap" ref={wrapRef}>
+          <div className="geom-no">{t.noGeometry}</div>
+        </div>
+      </div>
+    );
+  }
+
+  const W = size.w;
+  const H = size.h;
+  const compactPlot = W <= 520;
+  const margin = compactPlot
+    ? { top: 8, right: 8, bottom: 8, left: 8 }
+    : { top: 24, right: 32, bottom: 30, left: 40 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  const xScale = (x) =>
+    margin.left + ((x - bb.xmin) / (bb.xmax - bb.xmin)) * plotW;
+  const yScale = (y) =>
+    margin.top + (1 - (y - bb.ymin) / (bb.ymax - bb.ymin)) * plotH;
+
   const polyD = verts.length
     ? verts.map((p) => `${xScale(p.x)},${yScale(p.y)}`).join(" ")
     : "";
 
-  const axisLabels = effective.varNames.map((v) => v.replace("_", ""));
+  const axisNames = (effective.varNames || effective.c.map((_, j) => `x${j + 1}`));
+  const axisLabels = axisNames.map((v) => v.replace("_", ""));
   const axisX0 = xScale(0);
   const axisY0 = yScale(0);
   const xAxisNearBottom = compactPlot && axisY0 > H - 20;
@@ -304,7 +309,7 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
                   {isCut
                     ? (c.label || "cut")
                     : isBound
-                    ? `${effective.varNames[c.varIndex].replace("_", "")}≤${c.b}`
+                    ? `${(axisNames[c.varIndex] || `x${c.varIndex + 1}`).replace("_", "")}≤${c.b}`
                     : `${mode === "primal" ? "C" : "D"}${i + 1}`}
                 </text>
               </g>

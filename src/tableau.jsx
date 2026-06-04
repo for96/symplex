@@ -408,7 +408,7 @@ function SensitivityPanel({ state, t }) {
         <tbody>
           {data.costRanges.map((r, j) => (
             <tr key={j}>
-              <td>{state.varNames[j].replace("_", "")}</td>
+              <td>{((state.varNames && state.varNames[j]) || `x${j + 1}`).replace("_", "")}</td>
               <td>{fmt(state.cOrig[j])}</td>
               <td>
                 [{fmt(state.cOrig[j] + r.low)} , {fmt(state.cOrig[j] + r.high)}]
@@ -489,7 +489,7 @@ function CutItem({ cut, lp, latestState, t }) {
           {cut.cover.map((j, k) => (
             <React.Fragment key={k}>
               {k > 0 && " + "}
-              <VarNameInline name={lp.varNames[j]} />
+              <VarNameInline name={(lp.varNames && lp.varNames[j]) || `x${j + 1}`} />
             </React.Fragment>
           ))}
           {" ≤ "}
@@ -630,7 +630,7 @@ function LinearExpr({ coefs, names }) {
   const terms = [];
   for (let j = 0; j < coefs.length; j++) {
     const co = coefs[j];
-    if (Math.abs(co) > 1e-9) terms.push({ co, name: names[j] || `x${j + 1}` });
+    if (Math.abs(co) > 1e-9) terms.push({ co, name: (names && names[j]) || `x${j + 1}` });
   }
   if (terms.length === 0) return <span>0</span>;
   return (
@@ -652,7 +652,8 @@ function LinearExpr({ coefs, names }) {
 
 // Small inline variable-name (without the React.Fragment wrap of VarName)
 function VarNameInline({ name }) {
-  const m = name.match(/^([a-zA-Z]+)_?(\d+)?$/);
+  const safeName = String(name || "x");
+  const m = safeName.match(/^([a-zA-Z]+)_?(\d+)?$/);
   if (m && m[2]) {
     return (
       <span className="var-name">
@@ -661,7 +662,7 @@ function VarNameInline({ name }) {
       </span>
     );
   }
-  return <span className="var-name">{name}</span>;
+  return <span className="var-name">{safeName}</span>;
 }
 
 Object.assign(window, {

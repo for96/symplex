@@ -4,8 +4,9 @@
 const { useState, useEffect, useRef, useMemo } = React;
 
 function VarName({ name }) {
+  const safeName = String(name || "x");
   // Render "x1" (or legacy "x_1" from saved history) as x with subscript 1
-  const m = name.match(/^([a-zA-Z]+)_?(\d+)?$/);
+  const m = safeName.match(/^([a-zA-Z]+)_?(\d+)?$/);
   if (m && m[2]) {
     return (
       <span className="var-name">
@@ -14,7 +15,7 @@ function VarName({ name }) {
       </span>
     );
   }
-  return <span className="var-name">{name}</span>;
+  return <span className="var-name">{safeName}</span>;
 }
 
 function CoefInput({ value, onChange }) {
@@ -126,11 +127,23 @@ function ensureLPBounds(lp) {
   return bounds;
 }
 
+function defaultVarName(j) {
+  return `x${j + 1}`;
+}
+
+function lpVarNames(lp) {
+  const n = (lp.c || []).length;
+  const names = (lp.varNames || []).slice();
+  while (names.length < n) names.push(defaultVarName(names.length));
+  return names;
+}
+
 function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHistory }) {
   const [mode, setMode] = useState("structured");
   const [text, setText] = useState(() => lpToText(lp));
   const [textErr, setTextErr] = useState("");
   const lpType = lp.type || "lp";
+  const names = lpVarNames(lp);
 
   useEffect(() => {
     setText(lpToText(lp));
@@ -172,7 +185,7 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
   }
   function addVariable() {
     const n = lp.c.length;
-    const usedNames = new Set(lp.varNames);
+    const usedNames = new Set(names);
     let k = n + 1;
     let newName = `x${k}`;
     while (usedNames.has(newName)) {
@@ -185,7 +198,7 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
     setLp({
       ...lp,
       c: [...lp.c, 0],
-      varNames: [...lp.varNames, newName],
+      varNames: [...names, newName],
       constraints: lp.constraints.map((cs) => ({ ...cs, a: [...cs.a, 0] })),
       varBounds: bounds,
     });
@@ -197,7 +210,7 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
     setLp({
       ...lp,
       c: lp.c.filter((_, i) => i !== j),
-      varNames: lp.varNames.filter((_, i) => i !== j),
+      varNames: names.filter((_, i) => i !== j),
       constraints: lp.constraints.map((cs) => ({ ...cs, a: cs.a.filter((_, i) => i !== j) })),
       varBounds: bounds.filter((_, i) => i !== j),
     });
@@ -298,7 +311,7 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
                 <React.Fragment key={j}>
                   <span className="coef-term">
                     <CoefInput value={v} onChange={(nv) => updateC(j, nv)} />
-                    <VarName name={lp.varNames[j]} />
+                    <VarName name={names[j]} />
                   </span>
                   {j < lp.c.length - 1 && <span className="coef-plus">+</span>}
                 </React.Fragment>
@@ -319,7 +332,7 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
                   <React.Fragment key={j}>
                     <span className="coef-term">
                       <CoefInput value={v} onChange={(nv) => updateA(i, j, nv)} />
-                      <VarName name={lp.varNames[j]} />
+                      <VarName name={names[j]} />
                     </span>
                     {j < c.a.length - 1 && <span className="coef-plus">+</span>}
                   </React.Fragment>
@@ -390,7 +403,7 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
           const isBinary = b.kind === "binary";
           return (
             <div className="var-bound-row" key={j}>
-              <span className="vb-name"><VarName name={lp.varNames[j]} /></span>
+              <span className="vb-name"><VarName name={names[j]} /></span>
               <select
                 className="op-select"
                 value={b.kind}
@@ -402,7 +415,7 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
                 <option value="binary" disabled={lpType === "lp"}>{t.varKindBinary}</option>
               </select>
               <span className="vb-bound-pair">
-                <span className="vb-mono">0 ≤ {lp.varNames[j].replace("_", "")} ≤</span>
+                <span className="vb-mono">0 ≤ {names[j].replace("_", "")} ≤</span>
                 <VbUbInput
                   value={b.ub}
                   isBinary={isBinary}
@@ -480,13 +493,14 @@ function ProblemEditor({ lp, setLp, t, lpHistory, currentFp, onSaveLp, onClearHi
 }
 
 function lpToTextOneLine(lp, t) {
+  const names = lpVarNames(lp);
   const obj = lp.c
     .map((v, j) => {
       if (v === 0) return null;
       const sign = v > 0 ? (j === 0 ? "" : "+") : "−";
       const abs = Math.abs(v);
       const c = abs === 1 ? "" : abs;
-      return `${sign}${c}${(lp.varNames[j] || "x").replace("_", "")}`;
+      return `${sign}${c}${names[j].replace("_", "")}`;
     })
     .filter(Boolean)
     .join("");
@@ -495,29 +509,32 @@ function lpToTextOneLine(lp, t) {
 }
 
 function lpToText(lp) {
+  const names = lpVarNames(lp);
   const sign = (v, first) => {
     if (v === 0) return "";
     if (v > 0) return first ? `${v}` : ` + ${v}`;
     return first ? `${v}` : ` - ${Math.abs(v)}`;
   };
   let s = `${lp.objective} z = `;
-  s += lp.c
-    .map((v, j) => `${sign(v, j === 0)}${formatVar(lp.varNames[j])}`)
+  const objTerms = lp.c
+    .map((v, j) => `${sign(v, j === 0)}${formatVar(names[j])}`)
     .filter(Boolean)
     .join("");
+  s += objTerms || "0";
   s += "\nsubject to\n";
   for (const c of lp.constraints) {
     s += "  ";
-    s += c.a
-      .map((v, j) => `${sign(v, j === 0)}${formatVar(lp.varNames[j])}`)
+    const lhsTerms = c.a
+      .map((v, j) => `${sign(v, j === 0)}${formatVar(names[j])}`)
       .filter(Boolean)
       .join("");
+    s += lhsTerms || "0";
     s += ` ${c.op === "<=" ? "<=" : c.op === ">=" ? ">=" : "="} ${c.b}\n`;
   }
   return s.trim();
 }
 function formatVar(n) {
-  return n.replace("_", "");
+  return String(n || "x").replace("_", "");
 }
 
 function parseText(text, t) {
@@ -532,7 +549,13 @@ function parseText(text, t) {
   if (!objMatch) throw new Error(t.errObjLine);
   const objective = objMatch[1].toLowerCase();
   const objRhs = objMatch[2];
-  const { vars, coefs } = parseExpr(objRhs, t);
+  let parsedObj;
+  if (/^[+-]?\d*\.?\d+(?:[eE][+-]?\d+)?$/.test(objRhs.trim())) {
+    parsedObj = { vars: [], coefs: [] };
+  } else {
+    parsedObj = parseExpr(objRhs, t);
+  }
+  const { vars, coefs } = parsedObj;
   const varNames = vars.map((v) => insertSub(v));
   const c = coefs;
   const constraints = [];
@@ -544,10 +567,20 @@ function parseText(text, t) {
     const op = m[2];
     const rhs = parseFloat(m[3]);
     const { vars: lhVars, coefs: lhCoefs } = parseExpr(lhs, t);
+    for (let k = 0; k < lhVars.length; k++) {
+      if (vars.indexOf(lhVars[k]) === -1) {
+        vars.push(lhVars[k]);
+        varNames.push(insertSub(lhVars[k]));
+        c.push(0);
+        // Backfill previous constraints with 0
+        for (const prev of constraints) {
+          prev.a.push(0);
+        }
+      }
+    }
     const a = new Array(varNames.length).fill(0);
     for (let k = 0; k < lhVars.length; k++) {
       const idx = vars.indexOf(lhVars[k]);
-      if (idx === -1) throw new Error(t.errUnknownVar(lhVars[k]));
       a[idx] = lhCoefs[k];
     }
     constraints.push({ a, op, b: rhs });
@@ -588,6 +621,7 @@ function parseExpr(expr, t) {
 
 function DualPanel({ lp, state, t }) {
   const dual = useMemo(() => window.Simplex.buildDual(lp), [lp]);
+  const names = lpVarNames(lp);
   const fmt = window.Simplex.fmt;
   const Frac = window.Frac;
   const term = (v, j, names) => {
@@ -650,7 +684,7 @@ function DualPanel({ lp, state, t }) {
             <span className="opt-vals">
               {xStar.map((v, j) => (
                 <React.Fragment key={j}>
-                  <VarName name={lp.varNames[j]} />
+                  <VarName name={names[j]} />
                   <span className="eq">*</span>
                   <span className="eq">=</span>
                   <Frac value={v} />

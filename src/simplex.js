@@ -64,6 +64,9 @@
     const constraints = normalize(lp.constraints);
     const rowScale = constraints.map((c) => c.rowScale || 1);
     const m = constraints.length;
+    const varNames = new Array(n)
+      .fill(0)
+      .map((_, j) => (lp.varNames && lp.varNames[j]) || `x${j + 1}`);
 
     let nSlack = 0;
     let nArt = 0;
@@ -81,7 +84,7 @@
     const colLabels = [];
     const colTypes = [];
     for (let j = 0; j < n; j++) {
-      colLabels.push((lp.varNames && lp.varNames[j]) || `x${j + 1}`);
+      colLabels.push(varNames[j]);
       colTypes.push("decision");
     }
     for (let i = 0, s = 1; i < m; i++) {
@@ -191,7 +194,7 @@
       status: "running",
       note: phase === 1 ? "phase1-init" : "init",
       objective: lp.objective,
-      varNames: lp.varNames.slice(),
+      varNames: varNames.slice(),
       originalLP: JSON.parse(JSON.stringify(lp)),
     };
   }
