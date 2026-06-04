@@ -62,53 +62,265 @@
     return { x, singular: false };
   }
 
-  // ---------- Feasibility checks ----------
+  // ---------- Feasibility and affine-system helpers ----------
+  function isKnown(v) {
+    return typeof v === "number" && isFinite(v);
+  }
+
+  function normalizedVector(values, len) {
+    const out = new Array(len).fill(null);
+    for (let i = 0; i < Math.min(values ? values.length : 0, len); i++) {
+      out[i] = isKnown(values[i]) ? values[i] : null;
+    }
+    return out;
+  }
+
+  function vectorComplete(values, len) {
+    if (!values || values.length < len) return false;
+    for (let i = 0; i < len; i++) {
+      if (!isKnown(values[i])) return false;
+    }
+    return true;
+  }
+
+  function knownLinearValue(coefs, values) {
+    let total = 0;
+    for (let i = 0; i < coefs.length; i++) {
+      const a = coefs[i] || 0;
+      if (Math.abs(a) < EPS) continue;
+      if (!isKnown(values[i])) return null;
+      total += a * values[i];
+    }
+    return cleanZero(total);
+  }
+
+  function constraintIssue(index, op, lhs, rhs) {
+    if (op === "<=" && lhs > rhs + EPS) return { kind: "violated-constraint", index, op, lhs, rhs };
+    if (op === ">=" && lhs < rhs - EPS) return { kind: "violated-constraint", index, op, lhs, rhs };
+    if (op === "=" && Math.abs(lhs - rhs) > EPS) return { kind: "violated-constraint", index, op, lhs, rhs };
+    return null;
+  }
+
   function primalFeasible(lp, x) {
+    const n = lp.c.length;
+    const values = normalizedVector(x, n);
     const issues = [];
-    for (let j = 0; j < x.length; j++) {
+    const unknown = [];
+    for (let j = 0; j < n; j++) {
+      if (!isKnown(values[j])) {
+        unknown.push({ kind: "var", index: j });
+        continue;
+      }
       const sign = lp.varSigns ? lp.varSigns[j] : ">= 0";
-      if (sign === ">= 0" && x[j] < -EPS) {
-        issues.push({ kind: "wrong-sign", index: j, sign, value: x[j] });
-      } else if (sign === "<= 0" && x[j] > EPS) {
-        issues.push({ kind: "wrong-sign", index: j, sign, value: x[j] });
+      if (sign === ">= 0" && values[j] < -EPS) {
+        issues.push({ kind: "wrong-sign", index: j, sign, value: values[j] });
+      } else if (sign === "<= 0" && values[j] > EPS) {
+        issues.push({ kind: "wrong-sign", index: j, sign, value: values[j] });
       }
     }
     for (let i = 0; i < lp.constraints.length; i++) {
       const c = lp.constraints[i];
-      const lhs = c.a.reduce((s, a, j) => s + a * x[j], 0);
-      if (c.op === "<=" && lhs > c.b + EPS) {
-        issues.push({ kind: "violated-constraint", index: i, op: c.op, lhs, rhs: c.b });
-      } else if (c.op === ">=" && lhs < c.b - EPS) {
-        issues.push({ kind: "violated-constraint", index: i, op: c.op, lhs, rhs: c.b });
-      } else if (c.op === "=" && Math.abs(lhs - c.b) > EPS) {
-        issues.push({ kind: "violated-constraint", index: i, op: c.op, lhs, rhs: c.b });
+      const lhs = knownLinearValue(c.a, values);
+      if (lhs === null) {
+        unknown.push({ kind: "constraint", index: i });
+        continue;
       }
+      const issue = constraintIssue(i, c.op, lhs, c.b);
+      if (issue) issues.push(issue);
     }
-    return { ok: issues.length === 0, issues };
+    return { ok: issues.length === 0, issues, partial: unknown.length > 0, unknown };
   }
 
   function dualFeasible(dual, y) {
+    const m = dual.c.length;
+    const values = normalizedVector(y, m);
     const issues = [];
-    for (let i = 0; i < y.length; i++) {
+    const unknown = [];
+    for (let i = 0; i < m; i++) {
+      if (!isKnown(values[i])) {
+        unknown.push({ kind: "var", index: i });
+        continue;
+      }
       const sign = dual.varSigns[i];
-      if (sign === ">= 0" && y[i] < -EPS) {
-        issues.push({ kind: "wrong-sign", index: i, sign, value: y[i] });
-      } else if (sign === "<= 0" && y[i] > EPS) {
-        issues.push({ kind: "wrong-sign", index: i, sign, value: y[i] });
+      if (sign === ">= 0" && values[i] < -EPS) {
+        issues.push({ kind: "wrong-sign", index: i, sign, value: values[i] });
+      } else if (sign === "<= 0" && values[i] > EPS) {
+        issues.push({ kind: "wrong-sign", index: i, sign, value: values[i] });
       }
     }
     for (let j = 0; j < dual.constraints.length; j++) {
       const c = dual.constraints[j];
-      const lhs = c.a.reduce((s, a, i) => s + a * y[i], 0);
-      if (c.op === "<=" && lhs > c.b + EPS) {
-        issues.push({ kind: "violated-constraint", index: j, op: c.op, lhs, rhs: c.b });
-      } else if (c.op === ">=" && lhs < c.b - EPS) {
-        issues.push({ kind: "violated-constraint", index: j, op: c.op, lhs, rhs: c.b });
-      } else if (c.op === "=" && Math.abs(lhs - c.b) > EPS) {
-        issues.push({ kind: "violated-constraint", index: j, op: c.op, lhs, rhs: c.b });
+      const lhs = knownLinearValue(c.a, values);
+      if (lhs === null) {
+        unknown.push({ kind: "constraint", index: j });
+        continue;
+      }
+      const issue = constraintIssue(j, c.op, lhs, c.b);
+      if (issue) issues.push(issue);
+    }
+    return { ok: issues.length === 0, issues, partial: unknown.length > 0, unknown };
+  }
+
+  function affineSystem(eqs, numUnknowns) {
+    const m = eqs.length;
+    if (numUnknowns === 0) {
+      const bad = eqs.find((e) => Math.abs(e.rhs || 0) > EPS);
+      return bad
+        ? { inconsistent: true, lhs: 0, rhs: bad.rhs }
+        : { inconsistent: false, rank: 0, dof: 0, particular: [], basis: [], freeCols: [], pivotCols: [] };
+    }
+    const M = eqs.map((e) => [...e.coefs.map((v) => v || 0), e.rhs || 0]);
+    let rank = 0;
+    const pivotCols = [];
+    for (let col = 0; col < numUnknowns && rank < m; col++) {
+      let pivot = rank;
+      let pmax = Math.abs(M[rank] ? M[rank][col] : 0);
+      for (let r = rank + 1; r < m; r++) {
+        if (Math.abs(M[r][col]) > pmax) {
+          pmax = Math.abs(M[r][col]);
+          pivot = r;
+        }
+      }
+      if (pmax < 1e-10) continue;
+      if (pivot !== rank) {
+        const tmp = M[rank];
+        M[rank] = M[pivot];
+        M[pivot] = tmp;
+      }
+      const piv = M[rank][col];
+      for (let c = col; c <= numUnknowns; c++) M[rank][c] /= piv;
+      for (let r = 0; r < m; r++) {
+        if (r === rank) continue;
+        const factor = M[r][col];
+        if (Math.abs(factor) < 1e-14) continue;
+        for (let c = col; c <= numUnknowns; c++) M[r][c] -= factor * M[rank][c];
+      }
+      pivotCols.push(col);
+      rank++;
+    }
+    for (let r = rank; r < m; r++) {
+      const allZero = M[r].slice(0, numUnknowns).every((v) => Math.abs(v) < EPS);
+      if (allZero && Math.abs(M[r][numUnknowns]) > EPS) {
+        return { inconsistent: true, lhs: 0, rhs: M[r][numUnknowns] };
       }
     }
-    return { ok: issues.length === 0, issues };
+    const freeCols = [];
+    for (let c = 0; c < numUnknowns; c++) {
+      if (!pivotCols.includes(c)) freeCols.push(c);
+    }
+    const particular = new Array(numUnknowns).fill(0);
+    for (let r = 0; r < pivotCols.length; r++) {
+      particular[pivotCols[r]] = cleanZero(M[r][numUnknowns]);
+    }
+    const basis = freeCols.map((fc) => {
+      const v = new Array(numUnknowns).fill(0);
+      v[fc] = 1;
+      for (let r = 0; r < pivotCols.length; r++) {
+        v[pivotCols[r]] = cleanZero(-M[r][fc]);
+      }
+      return v;
+    });
+    return { inconsistent: false, rank, dof: freeCols.length, particular, basis, freeCols, pivotCols };
+  }
+
+  function addLowerBound(range, low) {
+    if (low > range.low) range.low = cleanZero(low);
+  }
+
+  function addUpperBound(range, high) {
+    if (high < range.high) range.high = cleanZero(high);
+  }
+
+  function addInequalityRange(range, alpha, beta) {
+    // beta + alpha*t >= 0
+    if (Math.abs(alpha) < EPS) {
+      if (beta < -EPS) range.feasible = false;
+      return;
+    }
+    const bound = -beta / alpha;
+    if (alpha > 0) addLowerBound(range, bound);
+    else addUpperBound(range, bound);
+  }
+
+  function addEqualityRange(range, alpha, beta) {
+    // beta + alpha*t = 0
+    if (Math.abs(alpha) < EPS) {
+      if (Math.abs(beta) > EPS) range.feasible = false;
+      return;
+    }
+    const value = -beta / alpha;
+    addLowerBound(range, value);
+    addUpperBound(range, value);
+  }
+
+  function fullAffineVector(length, unknowns, affine) {
+    const base = new Array(length).fill(0);
+    const direction = new Array(length).fill(0);
+    const dir = affine.basis[0] || new Array(unknowns.length).fill(0);
+    for (let k = 0; k < unknowns.length; k++) {
+      base[unknowns[k]] = cleanZero(affine.particular[k] || 0);
+      direction[unknowns[k]] = cleanZero(dir[k] || 0);
+    }
+    return { base, direction };
+  }
+
+  function parametricRange(kind, lp, dual, unknowns, affine) {
+    const length = kind === "primal" ? lp.c.length : dual.c.length;
+    const { base, direction } = fullAffineVector(length, unknowns, affine);
+    const freeCol = affine.freeCols[0];
+    const parameterIndex = unknowns[freeCol];
+    const range = {
+      kind,
+      base,
+      direction,
+      parameterIndex,
+      low: -Infinity,
+      high: Infinity,
+      feasible: true,
+    };
+
+    if (kind === "primal") {
+      for (let j = 0; j < lp.c.length; j++) {
+        const sign = lp.varSigns ? lp.varSigns[j] : ">= 0";
+        if (sign === ">= 0") addInequalityRange(range, direction[j], base[j]);
+        else if (sign === "<= 0") addInequalityRange(range, -direction[j], -base[j]);
+      }
+      for (const c of lp.constraints) {
+        const lhsBase = c.a.reduce((s, a, j) => s + a * base[j], 0);
+        const lhsDir = c.a.reduce((s, a, j) => s + a * direction[j], 0);
+        if (c.op === "<=") addInequalityRange(range, -lhsDir, c.b - lhsBase);
+        else if (c.op === ">=") addInequalityRange(range, lhsDir, lhsBase - c.b);
+        else addEqualityRange(range, lhsDir, lhsBase - c.b);
+      }
+    } else {
+      for (let i = 0; i < dual.c.length; i++) {
+        const sign = dual.varSigns[i];
+        if (sign === ">= 0") addInequalityRange(range, direction[i], base[i]);
+        else if (sign === "<= 0") addInequalityRange(range, -direction[i], -base[i]);
+      }
+      for (const c of dual.constraints) {
+        const lhsBase = c.a.reduce((s, a, i) => s + a * base[i], 0);
+        const lhsDir = c.a.reduce((s, a, i) => s + a * direction[i], 0);
+        if (c.op === "<=") addInequalityRange(range, -lhsDir, c.b - lhsBase);
+        else if (c.op === ">=") addInequalityRange(range, lhsDir, lhsBase - c.b);
+        else addEqualityRange(range, lhsDir, lhsBase - c.b);
+      }
+    }
+    if (range.low > range.high + EPS) range.feasible = false;
+    return range;
+  }
+
+  function objectiveValue(coefs, values) {
+    if (!values || !vectorComplete(values, coefs.length)) return null;
+    return cleanZero(coefs.reduce((s, c, i) => s + c * values[i], 0));
+  }
+
+  function objectiveRange(coefs, range) {
+    if (!range) return null;
+    return {
+      base: cleanZero(coefs.reduce((s, c, i) => s + c * range.base[i], 0)),
+      direction: cleanZero(coefs.reduce((s, c, i) => s + c * range.direction[i], 0)),
+    };
   }
 
   // ---------- Complementary-slackness solver ----------
@@ -504,6 +716,206 @@
       basis: basis.map((c) => ({ kind: c.kind, index: c.index, label: c.label, value: c.value })),
       degenerate: inferred.degenerate,
     };
+  }
+
+  // Newer complementary-slackness path. It intentionally shadows the legacy
+  // full-vector functions above so saved exercises keep working while partial
+  // x*/y* inputs and one-parameter ranges are supported.
+  function solveDualFromPrimal(lp, dual, xStar) {
+    const m = lp.constraints.length;
+    const n = lp.c.length;
+    const steps = [];
+    const x = normalizedVector(xStar, n);
+
+    const feasP = primalFeasible(lp, x);
+    steps.push({ kind: "primal-feasibility", feasible: feasP.ok, issues: feasP.issues, partial: feasP.partial });
+    if (!feasP.ok) return { steps, ok: false, error: "primal-infeasible" };
+
+    const primalActive = lp.constraints.map((c, i) => {
+      const lhs = knownLinearValue(c.a, x);
+      const active = c.op === "=" ? true : lhs === null ? null : Math.abs(lhs - c.b) < EPS;
+      return {
+        i,
+        a: c.a.slice(),
+        b: c.b,
+        op: c.op,
+        lhs,
+        active,
+        slack: lhs === null ? null : c.op === "<=" ? c.b - lhs : c.op === ">=" ? lhs - c.b : 0,
+      };
+    });
+    steps.push({ kind: "primal-active", constraints: primalActive });
+
+    const yKnownZero = [];
+    const yFree = [];
+    for (let i = 0; i < m; i++) {
+      if (lp.constraints[i].op === "=") yFree.push(i);
+      else if (primalActive[i].active === false) yKnownZero.push(i);
+      else yFree.push(i);
+    }
+    steps.push({ kind: "y-zero-from-inactive", zeros: yKnownZero, frees: yFree });
+
+    const xPositive = [];
+    const xZero = [];
+    const xUnknown = [];
+    for (let j = 0; j < n; j++) {
+      if (!isKnown(x[j])) xUnknown.push(j);
+      else if (Math.abs(x[j]) < EPS) xZero.push(j);
+      else xPositive.push(j);
+    }
+    steps.push({ kind: "x-positive", positive: xPositive, zeros: xZero, unknown: xUnknown });
+
+    const numUnknowns = yFree.length;
+    const eqs = [];
+    for (const j of xPositive) {
+      const row = new Array(numUnknowns).fill(0);
+      for (let k = 0; k < numUnknowns; k++) {
+        const i = yFree[k];
+        row[k] = lp.constraints[i].a[j];
+      }
+      eqs.push({ coefs: row, rhs: lp.c[j], sourceJ: j });
+    }
+    steps.push({ kind: "system", eqs, unknowns: yFree, varSymbol: "y", rhsLabel: "c" });
+
+    const affine = affineSystem(eqs, numUnknowns);
+    if (affine.inconsistent) {
+      steps.push({ kind: "inconsistent", lhs: affine.lhs || 0, rhs: affine.rhs || 0 });
+      return { steps, ok: false, error: "inconsistent" };
+    }
+    if (affine.dof === 0) {
+      const y = new Array(m).fill(0);
+      for (let k = 0; k < numUnknowns; k++) y[yFree[k]] = affine.particular[k];
+      return finishWithDual(lp, dual, y, steps, x);
+    }
+    if (affine.dof === 1) {
+      const range = parametricRange("dual", lp, dual, yFree, affine);
+      return finishWithDualRange(lp, dual, range, steps, x);
+    }
+    steps.push({ kind: "underdetermined", numEq: affine.rank, numUnknowns, dof: affine.dof });
+    return { steps, ok: false, error: "underdetermined" };
+  }
+
+  function finishWithDual(lp, dual, y, steps, xStar) {
+    steps.push({ kind: "solution-dual", y });
+    const feasD = dualFeasible(dual, y);
+    steps.push({ kind: "dual-feasibility", feasible: feasD.ok, issues: feasD.issues });
+    steps.push({ kind: "objective-values", z: objectiveValue(lp.c, xStar), w: objectiveValue(dual.c, y) });
+    return { steps, ok: feasD.ok, y };
+  }
+
+  function finishWithDualRange(lp, dual, range, steps, xStar) {
+    steps.push({ kind: "solution-dual-range", range });
+    steps.push({ kind: "dual-feasibility", feasible: range.feasible, issues: [], parametric: true });
+    const wRange = objectiveRange(dual.c, range);
+    steps.push({
+      kind: "objective-values",
+      z: objectiveValue(lp.c, xStar),
+      w: wRange ? wRange.base : null,
+      wDir: wRange ? wRange.direction : 0,
+      param: { symbol: "y", index: range.parameterIndex },
+    });
+    return { steps, ok: range.feasible, yRange: range };
+  }
+
+  function solvePrimalFromDual(lp, dual, yStar) {
+    const m = lp.constraints.length;
+    const n = lp.c.length;
+    const steps = [];
+    const y = normalizedVector(yStar, m);
+
+    const feasD = dualFeasible(dual, y);
+    steps.push({ kind: "dual-feasibility", feasible: feasD.ok, issues: feasD.issues, partial: feasD.partial });
+    if (!feasD.ok) return { steps, ok: false, error: "dual-infeasible" };
+
+    const dualActive = dual.constraints.map((c, j) => {
+      const lhs = knownLinearValue(c.a, y);
+      const active = c.op === "=" ? true : lhs === null ? null : Math.abs(lhs - c.b) < EPS;
+      return {
+        j,
+        a: c.a.slice(),
+        b: c.b,
+        op: c.op,
+        lhs,
+        active,
+        slack: lhs === null ? null : c.op === "<=" ? c.b - lhs : c.op === ">=" ? lhs - c.b : 0,
+      };
+    });
+    steps.push({ kind: "dual-active", constraints: dualActive });
+
+    const xKnownZero = [];
+    const xFree = [];
+    for (let j = 0; j < n; j++) {
+      if (dualActive[j].active === false) xKnownZero.push(j);
+      else xFree.push(j);
+    }
+    steps.push({ kind: "x-zero-from-inactive", zeros: xKnownZero, frees: xFree });
+
+    const yPositive = [];
+    const yZero = [];
+    const yUnknown = [];
+    for (let i = 0; i < m; i++) {
+      if (!isKnown(y[i])) yUnknown.push(i);
+      else if (Math.abs(y[i]) < EPS) yZero.push(i);
+      else yPositive.push(i);
+    }
+    steps.push({ kind: "y-positive", positive: yPositive, zeros: yZero, unknown: yUnknown });
+
+    const activeI = new Set(yPositive);
+    for (let i = 0; i < m; i++) {
+      if (lp.constraints[i].op === "=") activeI.add(i);
+    }
+    const activeList = Array.from(activeI).sort((a, b) => a - b);
+
+    const numUnknowns = xFree.length;
+    const eqs = [];
+    for (const i of activeList) {
+      const row = new Array(numUnknowns).fill(0);
+      for (let k = 0; k < numUnknowns; k++) {
+        const j = xFree[k];
+        row[k] = lp.constraints[i].a[j];
+      }
+      eqs.push({ coefs: row, rhs: lp.constraints[i].b, sourceI: i });
+    }
+    steps.push({ kind: "system", eqs, unknowns: xFree, varSymbol: "x", rhsLabel: "b" });
+
+    const affine = affineSystem(eqs, numUnknowns);
+    if (affine.inconsistent) {
+      steps.push({ kind: "inconsistent", lhs: affine.lhs || 0, rhs: affine.rhs || 0 });
+      return { steps, ok: false, error: "inconsistent" };
+    }
+    if (affine.dof === 0) {
+      const x = new Array(n).fill(0);
+      for (let k = 0; k < numUnknowns; k++) x[xFree[k]] = affine.particular[k];
+      return finishWithPrimal(lp, dual, x, steps, y);
+    }
+    if (affine.dof === 1) {
+      const range = parametricRange("primal", lp, dual, xFree, affine);
+      return finishWithPrimalRange(lp, dual, range, steps, y);
+    }
+    steps.push({ kind: "underdetermined", numEq: affine.rank, numUnknowns, dof: affine.dof });
+    return { steps, ok: false, error: "underdetermined" };
+  }
+
+  function finishWithPrimal(lp, dual, x, steps, yStar) {
+    steps.push({ kind: "solution-primal", x });
+    const feasP = primalFeasible(lp, x);
+    steps.push({ kind: "primal-feasibility-final", feasible: feasP.ok, issues: feasP.issues });
+    steps.push({ kind: "objective-values", z: objectiveValue(lp.c, x), w: objectiveValue(dual.c, yStar) });
+    return { steps, ok: feasP.ok, x };
+  }
+
+  function finishWithPrimalRange(lp, dual, range, steps, yStar) {
+    steps.push({ kind: "solution-primal-range", range });
+    steps.push({ kind: "primal-feasibility-final", feasible: range.feasible, issues: [], parametric: true });
+    const zRange = objectiveRange(lp.c, range);
+    steps.push({
+      kind: "objective-values",
+      z: zRange ? zRange.base : null,
+      zDir: zRange ? zRange.direction : 0,
+      w: objectiveValue(dual.c, yStar),
+      param: { symbol: "x", index: range.parameterIndex },
+    });
+    return { steps, ok: range.feasible, xRange: range };
   }
 
   window.Duality = {

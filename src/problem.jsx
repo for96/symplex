@@ -690,4 +690,5 @@ Object.assign(window, {
   DualPanel,
   VarName,
   CoefInput,
+  LPText: { lpToText, parseText },
 });

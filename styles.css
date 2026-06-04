@@ -1539,6 +1539,11 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   outline-offset: 1px;
 }
 .dy-known-tabs { margin-bottom: 10px; }
+.dy-editor-tabs {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
 .dy-vector-input {
   display: flex;
   align-items: center;
@@ -1743,6 +1748,16 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   padding: 6px 0;
 }
 .dy-sol-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.dy-solution-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dy-affine-expr {
   display: inline-flex;
   align-items: baseline;
   gap: 2px;

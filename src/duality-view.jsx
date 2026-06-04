@@ -110,7 +110,7 @@ function formatFracInput(v) {
 
 function parseFracInput(s) {
   const t = String(s).trim();
-  if (t === "") return 0;
+  if (t === "") return null;
   const fr = t.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)$/);
   if (fr) {
     const num = parseFloat(fr[1]);
@@ -133,25 +133,60 @@ function FracInput({ value, onChange, ariaLabel }) {
   function commit(s) {
     setText(s);
     const v = parseFracInput(s);
-    if (v !== null) onChange(v);
+    onChange(v);
   }
   return (
     <input
       type="text"
       className="frac-input"
       value={text}
-      onFocus={() => { setFocused(true); setText(""); }}
+      onFocus={() => setFocused(true)}
       onChange={(e) => commit(e.target.value)}
       onBlur={() => { setFocused(false); setText(formatFracInput(value)); }}
       aria-label={ariaLabel || ""}
+      placeholder="?"
     />
   );
+}
+
+function dualityLpToText(lp) {
+  return window.LPText ? window.LPText.lpToText(lp) : "";
+}
+
+function mergeDualityTextLP(current, parsed) {
+  const oldSigns = new Map();
+  (current.varNames || []).forEach((name, j) => {
+    oldSigns.set(String(name).replace("_", ""), current.varSigns ? current.varSigns[j] : ">= 0");
+  });
+  return {
+    ...parsed,
+    type: current.type || "lp",
+    varSigns: parsed.varNames.map((name) => oldSigns.get(String(name).replace("_", "")) || ">= 0"),
+  };
 }
 
 // Compact LP editor used only inside the duality workspace. Adds/removes rows
 // and variables but does NOT touch var bounds, ILP toggle or LP history —
 // those live in the simplex workspace and would just be noise here.
 function DualityLPEditor({ lp, setLp, t }) {
+  const [mode, setMode] = useStateD("structured");
+  const [text, setText] = useStateD(() => dualityLpToText(lp));
+  const [textErr, setTextErr] = useStateD("");
+
+  useEffectD(() => {
+    setText(dualityLpToText(lp));
+  }, [lp]);
+
+  function applyText() {
+    try {
+      if (!window.LPText) throw new Error("parser unavailable");
+      setLp(mergeDualityTextLP(lp, window.LPText.parseText(text, t)));
+      setTextErr("");
+    } catch (e) {
+      setTextErr(e.message);
+    }
+  }
+
   function setObj(v) { setLp({ ...lp, objective: v }); }
   function setC(j, v) { const c = lp.c.slice(); c[j] = v; setLp({ ...lp, c }); }
   function setA(i, j, v) {
@@ -203,6 +238,23 @@ function DualityLPEditor({ lp, setLp, t }) {
   const freeLabel = (t.subjectTo === "soggetto a") ? "libera" : "free";
   return (
     <div className="dy-editor">
+      <div className="dy-editor-tabs">
+        <div className="seg">
+          <button
+            className={mode === "structured" ? "active" : ""}
+            onClick={() => setMode("structured")}
+          >
+            {t.editStructured}
+          </button>
+          <button
+            className={mode === "text" ? "active" : ""}
+            onClick={() => setMode("text")}
+          >
+            {t.editText}
+          </button>
+        </div>
+      </div>
+      <div style={{ display: mode === "structured" ? "block" : "none" }}>
       <div className="obj-row">
         <div className="obj-label">
           <select className="op-select" value={lp.objective} onChange={(e) => setObj(e.target.value)}>
@@ -282,6 +334,20 @@ function DualityLPEditor({ lp, setLp, t }) {
           <button className="pill-btn" onClick={rmVar} title={t.removeVariable}>− {t.variables.toLowerCase()}</button>
         )}
       </div>
+      </div>
+      <div style={{ display: mode === "text" ? "block" : "none" }}>
+        <textarea
+          className="text-editor dy-text-editor"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          spellCheck="false"
+        />
+        {textErr && <div className="text-err">⚠ {textErr}</div>}
+        <div className="editor-actions">
+          <button className="pill-btn active" onClick={applyText}>{t.apply}</button>
+          <button className="pill-btn" onClick={() => setText(dualityLpToText(lp))}>{t.reset}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -349,10 +415,12 @@ function StepHeader({ idx, title }) {
   );
 }
 
-function FeasibilityRow({ feasible, issues, t, lp, dual, isDual }) {
+function FeasibilityRow({ feasible, issues, t, lp, dual, isDual, partial, parametric }) {
   return (
     <div className={"dy-feas " + (feasible ? "ok" : "ko")}>
-      {feasible ? `✓ ${t.dyFeasible}` : `✗ ${t.dyInfeasible}`}
+      {feasible
+        ? (parametric ? `✓ ${t.dyFeasibleRange}` : partial ? `✓ ${t.dyFeasiblePartial}` : `✓ ${t.dyFeasible}`)
+        : `✗ ${t.dyInfeasible}`}
       {!feasible && (
         <ul className="dy-issues">
           {issues.map((iss, k) => (
@@ -391,10 +459,12 @@ function PrimalActiveTable({ constraints, xStar, lp, t }) {
         {constraints.map((c, i) => (
           <tr key={i} className={c.active ? "active" : "inactive"}>
             <td>C{i + 1}</td>
-            <td><FracDisplay value={c.lhs} /></td>
+            <td>{c.lhs === null ? "?" : <FracDisplay value={c.lhs} />}</td>
             <td><FracDisplay value={c.b} /></td>
             <td>
-              {c.op === "=" ? (
+              {c.active === null ? (
+                <span className="dy-tag inactive">{t.dyUnknown}</span>
+              ) : c.op === "=" ? (
                 <span className="dy-tag eq">= ({t.dyEquality})</span>
               ) : c.active ? (
                 <span className="dy-tag active">{t.dyActive}</span>
@@ -424,10 +494,12 @@ function DualActiveTable({ constraints, yStar, t }) {
         {constraints.map((c, j) => (
           <tr key={j} className={c.active ? "active" : "inactive"}>
             <td>D{j + 1}</td>
-            <td><FracDisplay value={c.lhs} /></td>
+            <td>{c.lhs === null ? "?" : <FracDisplay value={c.lhs} />}</td>
             <td><FracDisplay value={c.b} /></td>
             <td>
-              {c.active ? (
+              {c.active === null ? (
+                <span className="dy-tag inactive">{t.dyUnknown}</span>
+              ) : c.active ? (
                 <span className="dy-tag active">{t.dyActive}</span>
               ) : (
                 <span className="dy-tag inactive">{t.dyInactive} ({t.dySlack} = <FracDisplay value={c.slack} />)</span>
@@ -449,10 +521,13 @@ function SystemView({ eqs, unknowns, varSymbol, t }) {
       <tbody>
         {eqs.map((e, r) => (
           <tr key={r}>
-            {e.coefs.map((co, k) => (
+            {e.coefs
+              .map((co, k) => ({ co, k }))
+              .filter((term) => Math.abs(term.co) > 1e-9)
+              .map(({ co, k }, pos) => (
               <React.Fragment key={k}>
-                <td className={"dy-coef " + (k === 0 ? "first" : "")}>
-                  {k > 0 && (co >= 0 ? "+" : "−")}
+                <td className={"dy-coef " + (pos === 0 ? "first" : "")}>
+                  {pos > 0 && (co >= 0 ? "+" : "−")}
                   {Math.abs(co) === 1 ? "" : Simplex.fmt(Math.abs(co), 2)}
                 </td>
                 <td className="dy-var">
@@ -488,6 +563,62 @@ function SolutionVector({ values, symbol, t }) {
 // ────────────────────────────────────────────────────────────────────────────
 // Main workspace
 // ────────────────────────────────────────────────────────────────────────────
+
+function ParamName({ symbol, index }) {
+  return (
+    <span>
+      <VarName name={`${symbol}_${index + 1}`} />
+      <span className="dy-eq">*</span>
+    </span>
+  );
+}
+
+function AffineExpr({ base, coef, param }) {
+  if (Math.abs(coef) < 1e-9) return <FracDisplay value={base} />;
+  const showBase = Math.abs(base) > 1e-9;
+  const absCoef = Math.abs(coef);
+  return (
+    <span className="dy-affine-expr">
+      {showBase && <FracDisplay value={base} />}
+      {showBase && <span className="dy-eq">{coef >= 0 ? "+" : "−"}</span>}
+      {!showBase && coef < 0 && <span className="dy-eq">−</span>}
+      {Math.abs(absCoef - 1) > 1e-9 && <FracDisplay value={absCoef} />}
+      {Math.abs(absCoef - 1) > 1e-9 && <span className="dy-eq">·</span>}
+      <ParamName symbol={param.symbol} index={param.index} />
+    </span>
+  );
+}
+
+function IntervalDisplay({ low, high }) {
+  return (
+    <span>
+      [<FracDisplay value={low} /> , <FracDisplay value={high} />]
+    </span>
+  );
+}
+
+function SolutionRange({ range, symbol, t }) {
+  const param = { symbol, index: range.parameterIndex };
+  return (
+    <div className="dy-solution-range">
+      <div className="dy-solution">
+        {range.base.map((base, i) => (
+          <span key={i} className="dy-sol-item">
+            <VarName name={`${symbol}_${i + 1}`} />
+            <span className="dy-eq">*</span>
+            <span className="dy-eq">=</span>
+            <AffineExpr base={base} coef={range.direction[i]} param={param} />
+            {i < range.base.length - 1 && <span className="sep">,</span>}
+          </span>
+        ))}
+      </div>
+      <div className="dy-frees">
+        <ParamName symbol={symbol} index={range.parameterIndex} /> ∈ <IntervalDisplay low={range.low} high={range.high} />
+      </div>
+      {!range.feasible && <div className="dy-note">{t.dyRangeEmpty}</div>}
+    </div>
+  );
+}
 
 function sensitivityReason(t, reason) {
   const map = {
@@ -557,7 +688,7 @@ function DualityWorkspace({ t }) {
   // values on every coefficient edit, only when the dimensions change.
   useEffectD(() => {
     if (knownX.length !== lp.c.length) {
-      const next = new Array(lp.c.length).fill(0);
+      const next = new Array(lp.c.length).fill(null);
       for (let j = 0; j < Math.min(knownX.length, lp.c.length); j++) next[j] = knownX[j];
       setKnownX(next);
     }
@@ -569,7 +700,7 @@ function DualityWorkspace({ t }) {
   }, [lp.c.length]);
   useEffectD(() => {
     if (knownY.length !== lp.constraints.length) {
-      const next = new Array(lp.constraints.length).fill(0);
+      const next = new Array(lp.constraints.length).fill(null);
       for (let i = 0; i < Math.min(knownY.length, lp.constraints.length); i++) next[i] = knownY[i];
       setKnownY(next);
     }
@@ -801,7 +932,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
       elems.push(
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepPrimalFeas} />
-          <FeasibilityRow feasible={step.feasible} issues={step.issues} t={t} lp={lp} isDual={false} />
+          <FeasibilityRow feasible={step.feasible} issues={step.issues} t={t} lp={lp} isDual={false} partial={step.partial} />
         </div>
       );
     } else if (step.kind === "primal-active") {
@@ -849,12 +980,19 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.positive.map((j) => (
                   <span key={j} className="dy-deduction">
-                    <VarName name={lp.varNames[j]} /><span className="dy-eq">*</span> &gt; 0 ⇒ <span className="dy-tag active">D{j + 1} {t.dyActive}</span>
+                    <VarName name={lp.varNames[j]} /><span className="dy-eq">*</span> ≠ 0 ⇒ <span className="dy-tag active">D{j + 1} {t.dyActive}</span>
                   </span>
                 ))}
               </div>
+            ) : step.unknown && step.unknown.length > 0 ? (
+              <div className="dy-note">{t.dyNoKnownNonzeroX}</div>
             ) : (
               <div className="dy-note">{t.dyAllXZero}</div>
+            )}
+            {step.unknown && step.unknown.length > 0 && (
+              <div className="dy-note">
+                {t.dyUnknownComponents}: {step.unknown.map((j) => lp.varNames[j].replace("_", "")).join(", ")}
+              </div>
             )}
           </div>
         </div>
@@ -904,12 +1042,19 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.positive.map((i) => (
                   <span key={i} className="dy-deduction">
-                    <VarName name={`y_${i + 1}`} /><span className="dy-eq">*</span> &gt; 0 ⇒ <span className="dy-tag active">C{i + 1} {t.dyActive}</span>
+                    <VarName name={`y_${i + 1}`} /><span className="dy-eq">*</span> ≠ 0 ⇒ <span className="dy-tag active">C{i + 1} {t.dyActive}</span>
                   </span>
                 ))}
               </div>
+            ) : step.unknown && step.unknown.length > 0 ? (
+              <div className="dy-note">{t.dyNoKnownNonzeroY}</div>
             ) : (
               <div className="dy-note">{t.dyAllYZero}</div>
+            )}
+            {step.unknown && step.unknown.length > 0 && (
+              <div className="dy-note">
+                {t.dyUnknownComponents}: {step.unknown.map((i) => `y_${i + 1}`).join(", ")}
+              </div>
             )}
           </div>
         </div>
@@ -964,6 +1109,16 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
           </div>
         </div>
       );
+    } else if (step.kind === "solution-dual-range") {
+      elems.push(
+        <div className="dy-step solved" key={stepIdx}>
+          <StepHeader idx={stepIdx} title={t.dyStepSolutionDualRange} />
+          <div className="dy-step-body">
+            <div className="dy-explain">{t.dyExplainRange}</div>
+            <SolutionRange range={step.range} symbol="y" t={t} />
+          </div>
+        </div>
+      );
     } else if (step.kind === "solution-primal") {
       elems.push(
         <div className="dy-step solved" key={stepIdx}>
@@ -973,39 +1128,52 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
           </div>
         </div>
       );
+    } else if (step.kind === "solution-primal-range") {
+      elems.push(
+        <div className="dy-step solved" key={stepIdx}>
+          <StepHeader idx={stepIdx} title={t.dyStepSolutionPrimalRange} />
+          <div className="dy-step-body">
+            <div className="dy-explain">{t.dyExplainRange}</div>
+            <SolutionRange range={step.range} symbol="x" t={t} />
+          </div>
+        </div>
+      );
     } else if (step.kind === "dual-feasibility") {
       elems.push(
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepDualFeas} />
-          <FeasibilityRow feasible={step.feasible} issues={step.issues} t={t} isDual={true} />
+          <FeasibilityRow feasible={step.feasible} issues={step.issues} t={t} isDual={true} partial={step.partial} parametric={step.parametric} />
         </div>
       );
     } else if (step.kind === "primal-feasibility-final") {
       elems.push(
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepPrimalFeas} />
-          <FeasibilityRow feasible={step.feasible} issues={step.issues} t={t} isDual={false} />
+          <FeasibilityRow feasible={step.feasible} issues={step.issues} t={t} isDual={false} partial={step.partial} parametric={step.parametric} />
         </div>
       );
     } else if (step.kind === "objective-values") {
-      // Compute z* / w* directly from inputs / result for clean display
-      const xUsed = knownType === "primal"
-        ? knownX
-        : (result.x || []);
-      const yUsed = knownType === "primal"
-        ? (result.y || [])
-        : knownY;
-      const z = xUsed.length ? lp.c.reduce((s, c, j) => s + c * (xUsed[j] || 0), 0) : null;
-      const w = yUsed.length ? dual.c.reduce((s, c, i) => s + c * (yUsed[i] || 0), 0) : null;
-      const matches = z !== null && w !== null && Math.abs(z - w) < 1e-6;
+      const z = step.z;
+      const w = step.w;
+      const zDir = step.zDir || 0;
+      const wDir = step.wDir || 0;
+      const param = step.param;
+      const zKnown = z !== null && z !== undefined;
+      const wKnown = w !== null && w !== undefined;
+      const matches = zKnown && wKnown && Math.abs(z - w) < 1e-6 && Math.abs(zDir - wDir) < 1e-6;
+      const valueNode = (base, dir) => {
+        if (base === null || base === undefined) return "?";
+        if (param && Math.abs(dir || 0) > 1e-9) return <AffineExpr base={base} coef={dir || 0} param={param} />;
+        return <FracDisplay value={base} />;
+      };
       elems.push(
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepStrongDuality} />
           <div className="dy-step-body">
             <div className="dy-strong-duality">
-              <span>z = c<sup>T</sup>x* = <FracDisplay value={z} /></span>
+              <span>z = c<sup>T</sup>x* = {valueNode(z, zDir)}</span>
               <span className="sep">·</span>
-              <span>w = b<sup>T</sup>y* = <FracDisplay value={w} /></span>
+              <span>w = b<sup>T</sup>y* = {valueNode(w, wDir)}</span>
               <span className="sep">·</span>
               <span className={matches ? "dy-tag active" : "dy-tag inactive"}>
                 {matches ? `✓ z = w (${t.dyStrongDuality})` : `✗ z ≠ w`}
