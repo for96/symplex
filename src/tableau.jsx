@@ -390,7 +390,7 @@ function SensitivityPanel({ state, t }) {
           <tr>
             <th>{t.constraintLabel}</th>
             <th>b<sub>i</sub></th>
-            <th>{t.rhsRange}</th>
+            <th dangerouslySetInnerHTML={{ __html: t.rhsRange }} />
           </tr>
         </thead>
         <tbody>
@@ -414,7 +414,7 @@ function SensitivityPanel({ state, t }) {
           <tr>
             <th>{t.variableLabel}</th>
             <th>c<sub>j</sub></th>
-            <th>{t.costRange}</th>
+            <th dangerouslySetInnerHTML={{ __html: t.costRange }} />
           </tr>
         </thead>
         <tbody>

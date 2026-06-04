@@ -1730,6 +1730,11 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   color: var(--ink);
   white-space: nowrap;
 }
+.dy-system td.dy-op {
+  padding: 0 8px;
+  color: var(--ink-2);
+  text-align: center;
+}
 .dy-system td.dy-coef.first {
   padding-left: 8px;
 }

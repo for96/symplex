@@ -526,8 +526,13 @@ function SystemView({ eqs, unknowns, varSymbol, t }) {
               .filter((term) => Math.abs(term.co) > 1e-9)
               .map(({ co, k }, pos) => (
               <React.Fragment key={k}>
+                {pos > 0 && (
+                  <td className="dy-op">
+                    {co >= 0 ? "+" : "−"}
+                  </td>
+                )}
                 <td className={"dy-coef " + (pos === 0 ? "first" : "")}>
-                  {pos > 0 && (co >= 0 ? "+" : "−")}
+                  {pos === 0 && co < 0 && "−"}
                   {Math.abs(co) === 1 ? "" : Simplex.fmt(Math.abs(co), 2)}
                 </td>
                 <td className="dy-var">
@@ -646,7 +651,7 @@ function DualitySensitivityPanel({ data, lp, t }) {
   }
   return (
     <div className="dy-step-body">
-      <div className="dy-explain">{t.dySensitivityExplain}</div>
+      <div className="dy-explain" dangerouslySetInnerHTML={{ __html: t.dySensitivityExplain }} />
       {data.degenerate && (
         <div className="dy-note">{t.dySensitivityDegenerate}</div>
       )}
@@ -658,7 +663,7 @@ function DualitySensitivityPanel({ data, lp, t }) {
           <tr>
             <th>{t.constraintLabel}</th>
             <th>b<sub>i</sub></th>
-            <th>{t.rhsRange}</th>
+            <th dangerouslySetInnerHTML={{ __html: t.rhsRange }} />
             <th>{t.dySensitivityFormula}</th>
           </tr>
         </thead>
