@@ -538,9 +538,7 @@ function App() {
               <StatGrid state={state} t={t} />
             </div>
 
-            {state.status === "optimal" && (
-              <SensitivityPanel state={state} t={t} />
-            )}
+            <SensitivityPanel state={state} t={t} />
 
             {lp.type === "ilp" && (
               <CutsPanel

@@ -634,9 +634,13 @@ function sensitivityReason(t, reason) {
 
 function DualitySensitivityPanel({ data, lp, t }) {
   if (!data.ok) {
+    const isIt = t.subjectTo === "soggetto a";
+    const msg = data.reason === "infeasible-or-missing"
+      ? (isIt ? "Inserisci una soluzione candidata ammissibile ed ottima per calcolare la sensitività." : "Enter a feasible and optimal candidate solution to calculate sensitivity.")
+      : `${t.dySensitivityUnavailable}: ${sensitivityReason(t, data.reason)}`;
     return (
-      <div className="dy-note">
-        {t.dySensitivityUnavailable}: {sensitivityReason(t, data.reason)}
+      <div className="dy-note" style={{ margin: 0 }}>
+        {msg}
       </div>
     );
   }
@@ -717,10 +721,10 @@ function DualityWorkspace({ t }) {
   }, [lp, dual, knownType, knownX, knownY]);
 
   const sensitivity = useMemoD(() => {
-    if (!result || !result.ok) return null;
+    if (!result || !result.ok) return { ok: false, reason: "infeasible-or-missing" };
     const xStar = knownType === "primal" ? knownX : result.x;
     const yStar = knownType === "primal" ? result.y : knownY;
-    if (!xStar || !yStar) return null;
+    if (!xStar || !yStar) return { ok: false, reason: "infeasible-or-missing" };
     return Duality.rhsSensitivity(lp, xStar, yStar);
   }, [lp, result, knownType, knownX, knownY]);
 

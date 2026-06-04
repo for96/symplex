@@ -369,7 +369,18 @@ function StatGrid({ state, t }) {
 
 function SensitivityPanel({ state, t }) {
   const data = useMemoT(() => Simplex.sensitivity(state), [state]);
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="section" data-screen-label="sensitivity">
+        <div className="section-title">{t.sensitivity}</div>
+        <div className="dy-note" style={{ margin: 0 }}>
+          {t.subjectTo === "soggetto a"
+            ? "Raggiungi la soluzione ottima (passo finale) per visualizzare l'analisi di sensitività."
+            : "Reach the optimal solution (final step) to view sensitivity analysis."}
+        </div>
+      </div>
+    );
+  }
   const fmt = Simplex.fmt;
   return (
     <div className="section" data-screen-label="sensitivity">
