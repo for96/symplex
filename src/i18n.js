@@ -37,6 +37,7 @@
       unbounded: "Problema illimitato",
       infeasible: "Problema non ammissibile",
       running: "In esecuzione",
+      iterationLimit: "Limite iterazioni",
       inProgress: "in corso",
       objValue: "Valore obiettivo z",
       currentBasis: "Base corrente",
@@ -96,6 +97,7 @@
       narrationOptimal: "Tutti i costi ridotti ≤ 0. Soluzione ottima raggiunta.",
       narrationUnbounded: "Nessun vincolo limita la variabile entrante: problema illimitato.",
       narrationInfeasible: "Artificiali residue positive: problema non ammissibile.",
+      narrationIterationLimit: "Raggiunto il limite massimo di iterazioni: interrompo il calcolo per evitare un ciclo troppo lungo.",
       narrationCutAdded: (kind, lbl) =>
         `Aggiunto taglio ${kind === "gomory" ? "di Gomory" : "cover"} (${lbl}). La nuova riga ha RHS negativo: avvio il simplesso duale.`,
       narrationDualPivot: (en, lv) =>
@@ -143,6 +145,7 @@
       cutGomoryDesc: "Gomory fractional cut",
       cutCoverUnavailable: "Cover non disponibile per la natura di questo PLI",
       cutGomoryUnavailable: "Gomory non disponibile per la natura di questo PLI",
+      cutCoverSearchLimited: "Cover non verificato: troppe variabili binarie per una ricerca esatta fluida",
       integerOptimal: "Ottimo intero",
       fractionalOptimal: "Ottimo frazionario",
       noFractional: "Soluzione già intera",
@@ -270,6 +273,7 @@
       unbounded: "Unbounded",
       infeasible: "Infeasible",
       running: "Running",
+      iterationLimit: "Iteration limit",
       inProgress: "in progress",
       objValue: "Objective value z",
       currentBasis: "Current basis",
@@ -329,6 +333,7 @@
       narrationOptimal: "All reduced costs ≤ 0. Optimal solution reached.",
       narrationUnbounded: "No constraint bounds the entering variable: unbounded.",
       narrationInfeasible: "Artificials remain positive: infeasible.",
+      narrationIterationLimit: "The maximum iteration limit was reached, so the calculation was stopped to avoid a long loop.",
       narrationCutAdded: (kind, lbl) =>
         `Added ${kind === "gomory" ? "Gomory" : "cover"} cut (${lbl}). New row has negative RHS: starting dual simplex.`,
       narrationDualPivot: (en, lv) =>
@@ -376,6 +381,7 @@
       cutGomoryDesc: "Gomory fractional cut",
       cutCoverUnavailable: "Cover unavailable for this ILP structure",
       cutGomoryUnavailable: "Gomory unavailable for this ILP structure",
+      cutCoverSearchLimited: "Cover not checked: too many binary variables for a fluid exact search",
       integerOptimal: "Integer optimum",
       fractionalOptimal: "Fractional optimum",
       noFractional: "Solution already integer",

@@ -38,12 +38,80 @@ const DUALITY_DEFAULT_X = [20 / 3, 11 / 3];
 const DUALITY_HISTORY_KEY = "duality_lp_history_v1";
 const DUALITY_HISTORY_LIMIT = 8;
 
+function finiteNumber(v, fallback = 0) {
+  const n = typeof v === "number" ? v : parseFloat(v);
+  return isFinite(n) ? n : fallback;
+}
+
+function defaultDualityVarName(j) {
+  return `x${j + 1}`;
+}
+
+function dualityVarNames(lp) {
+  const n = (lp && lp.c ? lp.c.length : 0);
+  const names = lp && Array.isArray(lp.varNames) ? lp.varNames.slice(0, n) : [];
+  while (names.length < n) names.push(defaultDualityVarName(names.length));
+  return names.map((name, j) => String(name || defaultDualityVarName(j)));
+}
+
+function dualityVarSigns(lp) {
+  const n = (lp && lp.c ? lp.c.length : 0);
+  const valid = new Set([">= 0", "<= 0", "free"]);
+  const signs = lp && Array.isArray(lp.varSigns) ? lp.varSigns.slice(0, n) : [];
+  while (signs.length < n) signs.push(">= 0");
+  return signs.map((sign) => valid.has(sign) ? sign : ">= 0");
+}
+
+function normalizeKnownVector(values, len) {
+  const out = new Array(len).fill(null);
+  const arr = Array.isArray(values) ? values : [];
+  let same = arr.length === len;
+  for (let i = 0; i < len; i++) {
+    const v = arr[i];
+    out[i] = typeof v === "number" && isFinite(v) ? v : null;
+    if (out[i] !== v) same = false;
+  }
+  return same ? values : out;
+}
+
+function knownVectorComplete(values, len) {
+  if (!Array.isArray(values) || values.length !== len) return false;
+  return values.every((v) => typeof v === "number" && isFinite(v));
+}
+
+function sanitizeDualityLP(raw) {
+  const source = raw && typeof raw === "object" ? raw : DUALITY_DEFAULT_LP;
+  const fallback = DUALITY_DEFAULT_LP;
+  const rawC = Array.isArray(source.c) && source.c.length > 0 ? source.c : fallback.c;
+  const c = rawC.map((v) => finiteNumber(v, 0));
+  const n = c.length;
+  const sourceCons = Array.isArray(source.constraints) && source.constraints.length > 0
+    ? source.constraints
+    : fallback.constraints;
+  const constraints = sourceCons.map((con) => {
+    const rawA = Array.isArray(con && con.a) ? con.a : [];
+    const a = new Array(n).fill(0);
+    for (let j = 0; j < n; j++) a[j] = finiteNumber(rawA[j], 0);
+    const op = con && (con.op === "<=" || con.op === ">=" || con.op === "=") ? con.op : "<=";
+    return { a, op, b: finiteNumber(con && con.b, 0) };
+  });
+  const objective = source.objective === "min" ? "min" : "max";
+  const base = { ...source, objective, c, constraints };
+  return {
+    ...base,
+    type: source.type || "lp",
+    varNames: dualityVarNames(base),
+    varSigns: dualityVarSigns(base),
+  };
+}
+
 function dualityLpFingerprint(lp) {
+  const safe = sanitizeDualityLP(lp);
   return JSON.stringify([
-    lp.objective,
-    lp.c,
-    (lp.constraints || []).map((c) => [c.a, c.op, c.b]),
-    lp.varSigns || [],
+    safe.objective,
+    safe.c,
+    (safe.constraints || []).map((c) => [c.a, c.op, c.b]),
+    safe.varSigns || [],
   ]);
 }
 
@@ -51,7 +119,14 @@ function loadDualityHistory() {
   try {
     const raw = localStorage.getItem(DUALITY_HISTORY_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) || [];
+    const parsed = JSON.parse(raw) || [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((e) => e && e.lp)
+      .map((e) => {
+        const lp = sanitizeDualityLP(e.lp);
+        return { ...e, lp, fp: e.fp || dualityLpFingerprint(lp) };
+      });
   } catch (e) {
     return [];
   }
@@ -64,8 +139,9 @@ function saveDualityHistory(arr) {
 }
 
 function pushDualityHistory(lp) {
+  const safeLP = sanitizeDualityLP(lp);
   const arr = loadDualityHistory();
-  const fp = dualityLpFingerprint(lp);
+  const fp = dualityLpFingerprint(safeLP);
   const existsIdx = arr.findIndex((e) => {
     const efp = e.lp ? dualityLpFingerprint(e.lp) : e.fp;
     return efp === fp;
@@ -77,26 +153,28 @@ function pushDualityHistory(lp) {
     }
     return arr;
   }
-  const filtered = [{ fp, lp: JSON.parse(JSON.stringify(lp)), ts: Date.now() }, ...arr];
+  const filtered = [{ fp, lp: JSON.parse(JSON.stringify(safeLP)), ts: Date.now() }, ...arr];
   while (filtered.length > DUALITY_HISTORY_LIMIT) filtered.pop();
   saveDualityHistory(filtered);
   return filtered;
 }
 
 function lpToTextOneLine(lp, t) {
-  const firstObjIdx = lp.c.findIndex((v) => Math.abs(v) > 1e-9);
-  const obj = lp.c
+  const safe = sanitizeDualityLP(lp);
+  const names = dualityVarNames(safe);
+  const firstObjIdx = safe.c.findIndex((v) => Math.abs(v) > 1e-9);
+  const obj = safe.c
     .map((v, j) => {
       if (v === 0) return null;
       const sign = v > 0 ? (j === firstObjIdx ? "" : "+") : "−";
       const abs = Math.abs(v);
       const c = abs === 1 ? "" : abs;
-      return `${sign}${c}${(lp.varNames[j] || "x").replace("_", "")}`;
+      return `${sign}${c}${names[j].replace("_", "")}`;
     })
     .filter(Boolean)
     .join("");
   const abbr = (t && t.constraintsAbbr) || "vinc.";
-  return `${obj} · ${lp.constraints.length} ${abbr}`;
+  return `${obj || "0"} · ${safe.constraints.length} ${abbr}`;
 }
 
 function formatFracInput(v) {
@@ -151,19 +229,22 @@ function FracInput({ value, onChange, ariaLabel }) {
 }
 
 function dualityLpToText(lp) {
-  return window.LPText ? window.LPText.lpToText(lp) : "";
+  return window.LPText ? window.LPText.lpToText(sanitizeDualityLP(lp)) : "";
 }
 
 function mergeDualityTextLP(current, parsed) {
   const oldSigns = new Map();
-  (current.varNames || []).forEach((name, j) => {
-    oldSigns.set(String(name).replace("_", ""), current.varSigns ? current.varSigns[j] : ">= 0");
+  const currentNames = dualityVarNames(current);
+  const currentSigns = dualityVarSigns(current);
+  currentNames.forEach((name, j) => {
+    oldSigns.set(String(name).replace("_", ""), currentSigns[j] || ">= 0");
   });
-  return {
+  const parsedNames = dualityVarNames(parsed);
+  return sanitizeDualityLP({
     ...parsed,
     type: current.type || "lp",
-    varSigns: parsed.varNames.map((name) => oldSigns.get(String(name).replace("_", "")) || ">= 0"),
-  };
+    varSigns: parsedNames.map((name) => oldSigns.get(String(name).replace("_", "")) || ">= 0"),
+  });
 }
 
 // Compact LP editor used only inside the duality workspace. Adds/removes rows
@@ -173,6 +254,8 @@ function DualityLPEditor({ lp, setLp, t }) {
   const [mode, setMode] = useStateD("structured");
   const [text, setText] = useStateD(() => dualityLpToText(lp));
   const [textErr, setTextErr] = useStateD("");
+  const names = dualityVarNames(lp);
+  const signs = dualityVarSigns(lp);
 
   useEffectD(() => {
     setText(dualityLpToText(lp));
@@ -215,25 +298,29 @@ function DualityLPEditor({ lp, setLp, t }) {
   }
   function addVar() {
     const n = lp.c.length;
-    const newVarName = `x${n + 1}`;
-    const varSigns = lp.varSigns ? [...lp.varSigns, ">= 0"] : new Array(n + 1).fill(">= 0");
+    const usedNames = new Set(names);
+    let k = n + 1;
+    let newVarName = `x${k}`;
+    while (usedNames.has(newVarName)) {
+      k += 1;
+      newVarName = `x${k}`;
+    }
     setLp({
       ...lp,
       c: [...lp.c, 0],
-      varNames: [...lp.varNames, newVarName],
+      varNames: [...names, newVarName],
       constraints: lp.constraints.map((c) => ({ ...c, a: [...c.a, 0] })),
-      varSigns,
+      varSigns: [...signs, ">= 0"],
     });
   }
   function rmVar() {
     if (lp.c.length <= 1) return;
-    const varSigns = lp.varSigns ? lp.varSigns.slice(0, -1) : new Array(lp.c.length - 1).fill(">= 0");
     setLp({
       ...lp,
       c: lp.c.slice(0, -1),
-      varNames: lp.varNames.slice(0, -1),
+      varNames: names.slice(0, -1),
       constraints: lp.constraints.map((c) => ({ ...c, a: c.a.slice(0, -1) })),
-      varSigns,
+      varSigns: signs.slice(0, -1),
     });
   }
   const freeLabel = (t.subjectTo === "soggetto a") ? "libera" : "free";
@@ -267,10 +354,10 @@ function DualityLPEditor({ lp, setLp, t }) {
           <span className="coef-z" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}>z =</span>
           {lp.c.map((v, j) => (
             <React.Fragment key={j}>
-              <span className="coef-term">
-                <CoefInput value={v} onChange={(nv) => setC(j, nv)} />
-                <VarName name={lp.varNames[j]} />
-              </span>
+                <span className="coef-term">
+                  <CoefInput value={v} onChange={(nv) => setC(j, nv)} />
+                  <VarName name={names[j]} />
+                </span>
               {j < lp.c.length - 1 && <span className="coef-plus">+</span>}
             </React.Fragment>
           ))}
@@ -287,7 +374,7 @@ function DualityLPEditor({ lp, setLp, t }) {
               <React.Fragment key={j}>
                 <span className="coef-term">
                   <CoefInput value={v} onChange={(nv) => setA(i, j, nv)} />
-                  <VarName name={lp.varNames[j]} />
+                  <VarName name={names[j]} />
                 </span>
                 {j < c.a.length - 1 && <span className="coef-plus">+</span>}
               </React.Fragment>
@@ -305,17 +392,16 @@ function DualityLPEditor({ lp, setLp, t }) {
       <div className="var-signs-row" style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, borderTop: "1px solid var(--rule)", paddingTop: 10 }}>
         <span style={{ color: "var(--ink-2)" }}>{t.varBoundsSection}:</span>
         {lp.c.map((_, j) => {
-          const sign = lp.varSigns ? lp.varSigns[j] : ">= 0";
+          const sign = signs[j] || ">= 0";
           return (
             <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <VarName name={lp.varNames[j]} />
+              <VarName name={names[j]} />
               <select
                 className="op-select"
                 style={{ padding: "1px 4px", fontSize: 12 }}
                 value={sign}
                 onChange={(e) => {
-                  const varSigns = (lp.varSigns || new Array(lp.c.length).fill(">= 0")).slice();
-                  while (varSigns.length < lp.c.length) varSigns.push(">= 0");
+                  const varSigns = signs.slice();
                   varSigns[j] = e.target.value;
                   setLp({ ...lp, varSigns });
                 }}
@@ -798,20 +884,23 @@ function DualitySensitivityPanel({ data, lp, t }) {
 }
 
 function DualityWorkspace({ t }) {
-  const [lp, setLp] = useStateD(() => {
+  const [lp, setLpState] = useStateD(() => {
     try {
       const stored = localStorage.getItem("duality_lp_current");
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed && typeof parsed === "object") return parsed;
+        if (parsed && typeof parsed === "object") return sanitizeDualityLP(parsed);
       }
     } catch (e) {}
-    return DUALITY_DEFAULT_LP;
+    return sanitizeDualityLP(DUALITY_DEFAULT_LP);
   });
+  function setLp(next) {
+    setLpState((prev) => sanitizeDualityLP(typeof next === "function" ? next(prev) : next));
+  }
   const [knownType, setKnownType] = useStateD(() => {
     try {
       const stored = localStorage.getItem("duality_known_type");
-      if (stored) return stored;
+      if (stored === "primal" || stored === "dual") return stored;
     } catch (e) {}
     return "primal";
   });
@@ -820,20 +909,20 @@ function DualityWorkspace({ t }) {
       const stored = localStorage.getItem("duality_known_x");
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) return normalizeKnownVector(parsed, lp.c.length);
       }
     } catch (e) {}
-    return DUALITY_DEFAULT_X;
+    return normalizeKnownVector(DUALITY_DEFAULT_X, lp.c.length);
   });
   const [knownY, setKnownY] = useStateD(() => {
     try {
       const stored = localStorage.getItem("duality_known_y");
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) return normalizeKnownVector(parsed, lp.constraints.length);
       }
     } catch (e) {}
-    return [0, 0, 0];
+    return normalizeKnownVector([0, 0, 0], lp.constraints.length);
   });
   const [dyHistory, setDyHistory] = useStateD(() => loadDualityHistory());
 
@@ -861,22 +950,13 @@ function DualityWorkspace({ t }) {
     } catch (e) {}
   }, [knownY]);
 
-  // Keep the size of knownX / knownY / varSigns in sync with the LP shape. We don't reset
-  // values on every coefficient edit, only when the dimensions change.
+  // Keep the size of knownX / knownY in sync with the LP shape. We preserve
+  // already-entered components instead of treating missing entries as zero.
   useEffectD(() => {
-    if (knownX.length !== lp.c.length) {
-      setKnownX(new Array(lp.c.length).fill(null));
-    }
-    if (!lp.varSigns || lp.varSigns.length !== lp.c.length) {
-      const nextSigns = lp.varSigns ? lp.varSigns.slice(0, lp.c.length) : [];
-      while (nextSigns.length < lp.c.length) nextSigns.push(">= 0");
-      setLp({ ...lp, varSigns: nextSigns });
-    }
+    setKnownX((prev) => normalizeKnownVector(prev, lp.c.length));
   }, [lp.c.length]);
   useEffectD(() => {
-    if (knownY.length !== lp.constraints.length) {
-      setKnownY(new Array(lp.constraints.length).fill(null));
-    }
+    setKnownY((prev) => normalizeKnownVector(prev, lp.constraints.length));
   }, [lp.constraints.length]);
 
   const dual = useMemoD(() => Simplex.buildDual(lp), [lp]);
@@ -904,12 +984,16 @@ function DualityWorkspace({ t }) {
       return range.base.map((b, i) => b + t * range.direction[i]);
     }
 
-    let xStar = knownType === "primal" ? knownX : result.x;
+    let xStar = knownType === "primal"
+      ? (knownVectorComplete(knownX, lp.c.length) ? knownX : null)
+      : result.x;
     if (!xStar && result.xRange) {
       xStar = representativeFromRange(result.xRange);
     }
 
-    let yStar = knownType === "primal" ? result.y : knownY;
+    let yStar = knownType === "primal"
+      ? result.y
+      : (knownVectorComplete(knownY, lp.constraints.length) ? knownY : null);
     if (!yStar && result.yRange) {
       yStar = representativeFromRange(result.yRange);
     }
@@ -1118,6 +1202,7 @@ function tErr(t, err) {
 function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
   let stepIdx = 0;
   const elems = [];
+  const names = dualityVarNames(lp);
 
   for (const step of result.steps) {
     stepIdx++;
@@ -1173,7 +1258,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.positive.map((j) => (
                   <span key={j} className="dy-deduction">
-                    <VarName name={lp.varNames[j]} /><sup>*</sup> ≠ 0 ⇒ <span className="dy-tag active">D{j + 1} {t.dyActive}</span>
+                    <VarName name={names[j]} /><sup>*</sup> ≠ 0 ⇒ <span className="dy-tag active">D{j + 1} {t.dyActive}</span>
                   </span>
                 ))}
               </div>
@@ -1184,7 +1269,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
             )}
             {step.unknown && step.unknown.length > 0 && (
               <div className="dy-note">
-                {t.dyUnknownComponents}: {step.unknown.map((j) => lp.varNames[j].replace("_", "")).join(", ")}
+                {t.dyUnknownComponents}: {step.unknown.map((j) => names[j].replace("_", "")).join(", ")}
               </div>
             )}
           </div>
@@ -1210,7 +1295,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
               <div className="dy-deductions">
                 {step.zeros.map((j) => (
                   <span key={j} className="dy-deduction">
-                    <VarName name={lp.varNames[j]} /><sup>*</sup><span className="dy-eq">=</span> 0
+                    <VarName name={names[j]} /><sup>*</sup><span className="dy-eq">=</span> 0
                   </span>
                 ))}
               </div>
@@ -1219,7 +1304,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
             )}
             {step.frees.length > 0 && (
               <div className="dy-frees">
-                {t.dyFree}: {step.frees.map((j) => lp.varNames[j].replace("_", "")).join(", ")}
+                {t.dyFree}: {step.frees.map((j) => names[j].replace("_", "")).join(", ")}
               </div>
             )}
           </div>

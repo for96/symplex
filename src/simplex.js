@@ -11,6 +11,7 @@
   // still be 1e-12..1e-10 numerically. Loosening risks accepting fake degeneracy.
   const EPS = 1e-9;
   const fractionCache = new Map();
+  const MAX_COVER_AVAILABILITY_BINARIES = 18;
 
   function flipOp(op) {
     return op === "<=" ? ">=" : op === ">=" ? "<=" : "=";
@@ -474,6 +475,10 @@
       state = next;
       if (state.status !== "running") break;
     }
+    if (state.status === "running") {
+      state = { ...state, status: "iteration-limit", note: "iteration-limit", pivot: null };
+      history[history.length - 1] = snapshot(state);
+    }
     return history;
   }
 
@@ -631,6 +636,9 @@
       isInt: k1 === 1,
       approx: Math.abs(x - h1 / k1) > 1e-9,
     };
+    if (fractionCache.size > 1000) {
+      fractionCache.clear();
+    }
     fractionCache.set(key, res);
     return res;
   }
@@ -785,8 +793,10 @@
   }
 
   function fractionalPart(v) {
+    const nearest = Math.round(v);
+    if (Math.abs(v - nearest) < 1e-7) return 0;
     const f = v - Math.floor(v);
-    if (f < 1e-9 || f > 1 - 1e-9) return 0;
+    if (f < 1e-7 || f > 1 - 1e-7) return 0;
     return f;
   }
 
@@ -1089,78 +1099,6 @@
     return { cover: minimal, sepValue, coverWeight };
   }
 
-  function generateCoverCutGreedyLegacy(state, lp) {
-    if (state.status !== "optimal") return null;
-    const bounds = ensureBounds(lp);
-    const binaryVars = [];
-    for (let j = 0; j < lp.c.length; j++) {
-      if (bounds[j].kind === "binary") binaryVars.push(j);
-    }
-    if (binaryVars.length === 0) return null;
-
-    const sol = currentSolution(state);
-    const xStar = lp.c.map((_, j) => sol[state.colLabels[j]] || 0);
-
-    for (let ci = 0; ci < lp.constraints.length; ci++) {
-      const c = lp.constraints[ci];
-      if (c.op !== "<=") continue;
-      // All coefs on binary vars positive (≥ 0), and at least one positive
-      if (binaryVars.some((j) => c.a[j] < 0)) continue;
-      if (binaryVars.every((j) => Math.abs(c.a[j]) < 1e-9)) continue;
-
-      // Greedy minimal cover: sort binaries by x*_j desc (and by a_j desc as tiebreak)
-      const sorted = binaryVars.slice().sort((a, b) => {
-        const dx = xStar[b] - xStar[a];
-        if (Math.abs(dx) > 1e-9) return dx;
-        return c.a[b] - c.a[a];
-      });
-
-      let sumA = 0;
-      const cover = [];
-      for (const j of sorted) {
-        sumA += c.a[j];
-        cover.push(j);
-        if (sumA > c.b + 1e-9) break;
-      }
-      if (sumA <= c.b + 1e-9) continue; // not a cover
-
-      // Make it minimal: remove redundant elements while still a cover
-      let minimalCover = cover.slice();
-      let restart = true;
-      while (restart) {
-        restart = false;
-        for (let k = 0; k < minimalCover.length; k++) {
-          const trial = minimalCover.filter((_, idx) => idx !== k);
-          const s = trial.reduce((acc, j) => acc + c.a[j], 0);
-          if (s > c.b + 1e-9) {
-            minimalCover = trial;
-            restart = true;
-            break;
-          }
-        }
-      }
-
-      // Violated by current fractional solution?
-      const lhs = minimalCover.reduce((acc, j) => acc + xStar[j], 0);
-      const rhs = minimalCover.length - 1;
-      if (lhs > rhs + 1e-7) {
-        // Decision-space form: Σ_{j ∈ cover} x_j ≤ |C|−1. Used both as a slack
-        // expression for any cascaded Gomory cuts AND to draw the cut as a line.
-        const aGeom = new Array(lp.c.length).fill(0);
-        for (const j of minimalCover) aGeom[j] = 1;
-        return {
-          kind: "cover",
-          constraintIdx: ci,
-          cover: minimalCover.slice(),
-          rhs,
-          lhsValue: lhs,
-          geomConstraint: { a: aGeom, op: "<=", b: rhs },
-        };
-      }
-    }
-    return null;
-  }
-
   function generateCoverCutExact(state, lp) {
     if (state.status !== "optimal") return null;
     const bounds = ensureBounds(lp);
@@ -1310,13 +1248,17 @@
         },
       };
     }
-    const coverCut = coverStructure ? generateCoverCutExact(state, lp) : null;
+    const coverBinaryCount = coverStructure
+      ? ensureBounds(lp).slice(0, lp.c.length).filter((b) => b.kind === "binary").length
+      : 0;
+    const coverLimited = coverBinaryCount > MAX_COVER_AVAILABILITY_BINARIES;
+    const coverCut = coverStructure && !coverLimited ? generateCoverCutExact(state, lp) : null;
     return {
       gomory: gomoryStructure, // Gomory works when an integer-required var is fractional.
       cover: !!coverCut,
       reasons: {
         gomory: gomoryStructure ? null : reasons.gomory,
-        cover: coverCut ? null : (reasons.cover || "no-violated-cover"),
+        cover: coverCut ? null : (coverLimited ? "cover-search-limited" : (reasons.cover || "no-violated-cover")),
       },
     };
   }
@@ -1336,6 +1278,10 @@
       states.push(snapshot(next));
       s = next;
       if (s.status !== "running") break;
+    }
+    if (s.status === "running") {
+      s = { ...s, status: "iteration-limit", note: "iteration-limit", pivot: null };
+      states[states.length - 1] = snapshot(s);
     }
     return states;
   }

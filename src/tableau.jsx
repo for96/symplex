@@ -65,16 +65,18 @@ function tipRhsCell(v, rowBasisLbl, lang) {
     ? `Valore corrente di ${rowBasisLbl} nella base: b̄ = ${Simplex.fmt(v, 3)}`
     : `Current value of ${rowBasisLbl} in basis: b̄ = ${Simplex.fmt(v, 3)}`;
 }
-function tipZRhs(v, lang, phase) {
+function tipZRhs(v, lang, phase, isMin) {
   const it = lang === "it";
   if (phase === 1) {
     return it
       ? `Valore corrente di −w = ${Simplex.fmt(v, 3)} (w = ${Simplex.fmt(-v, 3)})`
       : `Current value of −w = ${Simplex.fmt(v, 3)} (w = ${Simplex.fmt(-v, 3)})`;
   }
+  const zVal = isMin ? v : -v;
+  const label = isMin ? "z" : "−z";
   return it
-    ? `Valore corrente di −z = ${Simplex.fmt(v, 3)} (z = ${Simplex.fmt(-v, 3)})`
-    : `Current value of −z = ${Simplex.fmt(v, 3)} (z = ${Simplex.fmt(-v, 3)})`;
+    ? `Valore corrente di ${label} = ${Simplex.fmt(v, 3)} (z = ${Simplex.fmt(zVal, 3)})`
+    : `Current value of ${label} = ${Simplex.fmt(v, 3)} (z = ${Simplex.fmt(zVal, 3)})`;
 }
 function tipRatio(r, lang) {
   if (r == null) return "";
@@ -140,7 +142,7 @@ function TableauView({ state, t, verbose, lang }) {
                 {colLabels[j]}
               </th>
             ))}
-            <th className="col-rhs">{state.phase === 1 ? "−w" : "−z"}</th>
+            <th className="col-rhs">{state.phase === 1 ? "−w" : (state.isMin ? "z" : "−z")}</th>
             <th className="col-basis">base</th>
             {preview && (
               <th className="col-ratio">
@@ -167,7 +169,7 @@ function TableauView({ state, t, verbose, lang }) {
                 </td>
               );
             })}
-            <td className="col-rhs" title={tipZRhs(T[0][cols - 1], lang, state.phase)}>
+            <td className="col-rhs" title={tipZRhs(T[0][cols - 1], lang, state.phase, state.isMin)}>
               <Frac value={T[0][cols - 1]} />
             </td>
             <td className="col-basis" title={lang === "it" ? "Riga della funzione obiettivo (costi ridotti)" : "Objective row (reduced costs)"}>z</td>
@@ -238,6 +240,7 @@ function StatusPill({ status, t }) {
     optimal: { c: "status-optimal", l: t.optimal },
     unbounded: { c: "status-unbounded", l: t.unbounded },
     infeasible: { c: "status-infeasible", l: t.infeasible },
+    "iteration-limit": { c: "status-infeasible", l: t.iterationLimit },
   };
   const v = map[status] || map.running;
   return <span className={`status-pill ${v.c}`}>{v.l}</span>;
@@ -307,6 +310,8 @@ function Narration({ state, step, t, lang }) {
     body = t.narrationUnbounded;
   } else if (state.status === "infeasible") {
     body = t.narrationInfeasible;
+  } else if (state.status === "iteration-limit") {
+    body = t.narrationIterationLimit;
   } else if (step === 0) {
     body = state.phase === 1 ? t.narrationPhase1Start : t.narrationStep0;
   } else if (state.pivot) {
@@ -488,59 +493,6 @@ function CutsPanel({ lp, latestState, onRemoveLast, onReset, t }) {
       )}
     </div>
   );
-}
-
-function CutItem({ cut, lp, latestState, t }) {
-  const fmt = Simplex.fmt;
-  if (cut.kind === "cover") {
-    return (
-      <div className="cut-item cut-cover">
-        <span className="cut-label">{cut.label}</span>
-        <span className="cut-kind">cover</span>
-        <span className="cut-ineq">
-          {cut.cover.map((j, k) => (
-            <React.Fragment key={k}>
-              {k > 0 && " + "}
-              <VarNameInline name={(lp.varNames && lp.varNames[j]) || `x${j + 1}`} />
-            </React.Fragment>
-          ))}
-          {" ≤ "}
-          {cut.rhs}
-        </span>
-      </div>
-    );
-  }
-  if (cut.kind === "gomory") {
-    const terms = [];
-    for (let q = 0; q < cut.f_coefs.length; q++) {
-      const co = cut.f_coefs[q];
-      if (co > 1e-9) {
-        terms.push({ co, label: latestState.colLabels[q] });
-      }
-    }
-    return (
-      <div className="cut-item cut-gomory">
-        <span className="cut-label">{cut.label}</span>
-        <span className="cut-kind">gomory</span>
-        <span className="cut-ineq">
-          {terms.length > 0 ? (
-            terms.map((term, k) => (
-              <React.Fragment key={k}>
-                {k > 0 && " + "}
-                <Frac value={term.co} />
-                <VarNameInline name={term.label} />
-              </React.Fragment>
-            ))
-          ) : (
-            "0"
-          )}
-          {" ≥ "}
-          <Frac value={cut.f_b} />
-        </span>
-      </div>
-    );
-  }
-  return null;
 }
 
 function CutItemV2({ cut, lp, latestState, t }) {

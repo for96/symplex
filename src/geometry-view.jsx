@@ -40,7 +40,11 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
     function measure() {
       if (!wrapRef.current) return;
       const r = wrapRef.current.getBoundingClientRect();
-      setSize({ w: Math.max(320, r.width), h: Math.max(280, r.height) });
+      const next = {
+        w: Math.round(Math.max(320, r.width)),
+        h: Math.round(Math.max(280, r.height)),
+      };
+      setSize((prev) => (prev.w === next.w && prev.h === next.h ? prev : next));
     }
     measure();
     const ro = new ResizeObserver(measure);
@@ -114,15 +118,15 @@ function GeometryView({ lp, state, history, step, t, tweaks, appliedCuts }) {
   const yTicks = useMemoG(() => makeTicks(bb.ymin, bb.ymax), [bb.ymin, bb.ymax]);
 
   // Decision points along history (for path). Only meaningful in primal mode.
-  const pathPoints =
-    mode === "primal"
-      ? history
-          .filter((s) => s.iteration >= 0)
-          .map((s) => {
-            const pt = Simplex.decisionPoint(s);
-            return { x: pt[0] || 0, y: pt[1] || 0 };
-          })
-      : [];
+  const pathPoints = useMemoG(() => {
+    if (mode !== "primal") return [];
+    return history
+      .filter((s) => s.iteration >= 0)
+      .map((s) => {
+        const pt = Simplex.decisionPoint(s);
+        return { x: pt[0] || 0, y: pt[1] || 0 };
+      });
+  }, [history, mode]);
 
   const current =
     mode === "primal"

@@ -36,6 +36,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 }/*EDITMODE-END*/;
 
 const HISTORY_KEY = "simplesso_lp_history_v1";
+const APPLIED_CUTS_KEY = "symplex_applied_cuts";
 const HISTORY_LIMIT = 8;
 
 // Tweak value constants — keep in sync with TWEAK_DEFAULTS and styles.css class names.
@@ -81,6 +82,28 @@ function loadHistory() {
 function saveHistory(arr) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+  } catch (e) {}
+}
+function normalizeAppliedCuts(cuts) {
+  if (!Array.isArray(cuts)) return [];
+  return cuts.filter((kind) => kind === CUT_KINDS.COVER || kind === CUT_KINDS.GOMORY);
+}
+function loadAppliedCuts(lp) {
+  try {
+    const raw = localStorage.getItem(APPLIED_CUTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return normalizeAppliedCuts(parsed);
+    if (parsed && parsed.fp === lpFingerprint(lp)) return normalizeAppliedCuts(parsed.cuts);
+  } catch (e) {}
+  return [];
+}
+function saveAppliedCuts(lp, cuts) {
+  try {
+    localStorage.setItem(APPLIED_CUTS_KEY, JSON.stringify({
+      fp: lpFingerprint(lp),
+      cuts: normalizeAppliedCuts(cuts),
+    }));
   } catch (e) {}
 }
 function pushHistory(lp) {
@@ -136,16 +159,7 @@ function App() {
   const [playing, setPlaying] = useStateApp(false);
   const [lpHistory, setLpHistory] = useStateApp(() => loadHistory());
   const [tweaks, setTweak] = window.useTweaks(TWEAK_DEFAULTS);
-  const [appliedCuts, setAppliedCuts] = useStateApp(() => {
-    try {
-      const stored = localStorage.getItem("symplex_applied_cuts");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
-    return [];
-  });
+  const [appliedCuts, setAppliedCuts] = useStateApp(() => loadAppliedCuts(lp));
   const [mode, setMode] = useStateApp(() => {
     try {
       const stored = localStorage.getItem("symplex_mode");
@@ -161,6 +175,8 @@ function App() {
     return MOBILE_TABS.PROBLEM;
   });
   const [menuOpen, setMenuOpen] = useStateApp(false);
+  const lpResetRef = useRefApp(null);
+  const cutsHydratedRef = useRefApp(false);
 
   useEffectApp(() => {
     try {
@@ -175,10 +191,8 @@ function App() {
   }, [step]);
 
   useEffectApp(() => {
-    try {
-      localStorage.setItem("symplex_applied_cuts", JSON.stringify(appliedCuts));
-    } catch (e) {}
-  }, [appliedCuts]);
+    saveAppliedCuts(lp, appliedCuts);
+  }, [lp, appliedCuts]);
 
   useEffectApp(() => {
     try {
@@ -218,7 +232,12 @@ function App() {
 
   // Reset cuts when the LP itself changes
   useEffectApp(() => {
+    if (!cutsHydratedRef.current) {
+      cutsHydratedRef.current = true;
+      return;
+    }
     setAppliedCuts([]);
+    lpResetRef.current = effectiveLP;
   }, [effectiveLP]);
 
   const prevLP = useRefApp(effectiveLP);
@@ -238,8 +257,13 @@ function App() {
       setStep(0);
       setPlaying(false);
     } else if (cutsLengthChanged) {
-      if (history.length > 0) {
-        setStep(history.length - 1);
+      if (lpResetRef.current === effectiveLP) {
+        lpResetRef.current = null;
+        setStep(0);
+      } else {
+        if (history.length > 0) {
+          setStep(history.length - 1);
+        }
       }
       setPlaying(false);
     }
@@ -329,6 +353,7 @@ function App() {
       return kind === CUT_KINDS.COVER ? t.cutCoverUnavailable : t.cutGomoryUnavailable;
     }
     if (reason === "integer-optimal") return t.noFractional;
+    if (reason === "cover-search-limited") return t.cutCoverSearchLimited;
     return t.cutNone;
   }
 
