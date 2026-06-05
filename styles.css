@@ -1671,6 +1671,19 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
   color: var(--ink);
   font-weight: 500;
 }
+.dy-step sup,
+.dy-vec-label sup,
+.dy-solution sup,
+.dy-solution-range sup,
+.dy-strong-duality sup,
+.dy-table sup {
+  position: relative;
+  top: -0.35em;
+  font-size: 0.72em;
+  line-height: 1;
+  vertical-align: baseline;
+  margin-left: 0;
+}
 .dy-step-body {
   display: flex;
   flex-direction: column;
@@ -1736,7 +1749,7 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
 .dy-deduction {
   display: inline-flex;
   align-items: baseline;
-  gap: 2px;
+  gap: 0;
   padding: 3px 8px;
   background: var(--bg-2);
   border-radius: 4px;
@@ -1808,7 +1821,7 @@ hr.rule { border: none; border-top: 1px solid var(--rule); margin: 14px 0; }
 .dy-sol-item {
   display: inline-flex;
   align-items: baseline;
-  gap: 2px;
+  gap: 0;
 }
 .dy-solution-range {
   display: flex;

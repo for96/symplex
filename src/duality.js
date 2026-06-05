@@ -17,6 +17,7 @@
   // Why: looser than simplex EPS — the user types fractions like 20/3
   // (≈ 6.6667) which may carry 1e-5 round-off; we want activeness to register.
   const EPS = 1e-6;
+  const MAX_COMPLETION_COMBINATIONS = 20000;
 
   // ---------- Linear system solve ----------
   // Solves Ax = b for a square (n×n) A using partial-pivot Gaussian
@@ -323,6 +324,261 @@
     };
   }
 
+  function targetForKnownSide(kind, lp, dual) {
+    return kind === "primal" ? lp : dual;
+  }
+
+  function targetVarSign(target, index) {
+    return target.varSigns && target.varSigns[index] ? target.varSigns[index] : ">= 0";
+  }
+
+  function addCompletionRow(model, coefs, op, rhs) {
+    const row = coefs.map((v) => cleanZero(v || 0));
+    const right = cleanZero(rhs || 0);
+    const allZero = row.every((v) => Math.abs(v) < EPS);
+    if (allZero) {
+      const violated =
+        (op === "<=" && 0 > right + EPS) ||
+        (op === ">=" && 0 < right - EPS) ||
+        (op === "=" && Math.abs(right) > EPS);
+      if (violated) model.infeasible = true;
+      return;
+    }
+    if (op === "<=") {
+      model.ineqs.push({ coefs: row, rhs: right });
+    } else if (op === ">=") {
+      model.ineqs.push({ coefs: row.map((v) => -v), rhs: cleanZero(-right) });
+    } else {
+      model.eqs.push({ coefs: row, rhs: right });
+    }
+  }
+
+  function buildCompletionModel(kind, lp, dual, values, unknowns) {
+    const target = targetForKnownSide(kind, lp, dual);
+    const unknownSet = new Set(unknowns);
+    const model = {
+      kind,
+      target,
+      values: values.slice(),
+      unknowns: unknowns.slice(),
+      eqs: [],
+      ineqs: [],
+      infeasible: false,
+      obj: unknowns.map((j) => target.c[j] || 0),
+      objConst: 0,
+    };
+
+    for (let j = 0; j < target.c.length; j++) {
+      if (unknownSet.has(j)) continue;
+      model.objConst += (target.c[j] || 0) * (values[j] || 0);
+    }
+
+    for (let k = 0; k < unknowns.length; k++) {
+      const sign = targetVarSign(target, unknowns[k]);
+      const row = new Array(unknowns.length).fill(0);
+      row[k] = 1;
+      if (sign === ">= 0") addCompletionRow(model, row, ">=", 0);
+      else if (sign === "<= 0") addCompletionRow(model, row, "<=", 0);
+    }
+
+    for (const c of target.constraints || []) {
+      const row = new Array(unknowns.length).fill(0);
+      let knownPart = 0;
+      for (let j = 0; j < target.c.length; j++) {
+        const a = c.a[j] || 0;
+        const k = unknowns.indexOf(j);
+        if (k >= 0) row[k] = a;
+        else knownPart += a * (values[j] || 0);
+      }
+      addCompletionRow(model, row, c.op, c.b - knownPart);
+    }
+
+    return model;
+  }
+
+  function completionVector(model, coords) {
+    const out = model.values.slice();
+    for (let k = 0; k < model.unknowns.length; k++) {
+      out[model.unknowns[k]] = cleanZero(coords[k] || 0);
+    }
+    return out;
+  }
+
+  function completionObjective(model, coords) {
+    return cleanZero(model.objConst + model.obj.reduce((s, c, k) => s + c * (coords[k] || 0), 0));
+  }
+
+  function completionFeasible(model, coords) {
+    for (const e of model.eqs) {
+      const lhs = e.coefs.reduce((s, c, k) => s + c * (coords[k] || 0), 0);
+      if (Math.abs(lhs - e.rhs) > EPS) return false;
+    }
+    for (const e of model.ineqs) {
+      const lhs = e.coefs.reduce((s, c, k) => s + c * (coords[k] || 0), 0);
+      if (lhs > e.rhs + EPS) return false;
+    }
+    return true;
+  }
+
+  function combinationCount(n, k) {
+    if (k < 0 || k > n) return 0;
+    k = Math.min(k, n - k);
+    let count = 1;
+    for (let i = 1; i <= k; i++) {
+      count = (count * (n - k + i)) / i;
+      if (count > MAX_COMPLETION_COMBINATIONS) return count;
+    }
+    return count;
+  }
+
+  function forEachCombination(n, k, cb) {
+    const picked = [];
+    function rec(start) {
+      if (picked.length === k) {
+        cb(picked.slice());
+        return;
+      }
+      const need = k - picked.length;
+      for (let i = start; i <= n - need; i++) {
+        picked.push(i);
+        rec(i + 1);
+        picked.pop();
+      }
+    }
+    rec(0);
+  }
+
+  function completionRangeFromAffine(model, affine) {
+    if (!affine || affine.dof !== 1) return null;
+    const length = model.target.c.length;
+    const base = model.values.map((v) => (isKnown(v) ? v : 0));
+    const direction = new Array(length).fill(0);
+    const dir = affine.basis[0] || new Array(model.unknowns.length).fill(0);
+    for (let k = 0; k < model.unknowns.length; k++) {
+      base[model.unknowns[k]] = cleanZero(affine.particular[k] || 0);
+      direction[model.unknowns[k]] = cleanZero(dir[k] || 0);
+    }
+    const range = {
+      kind: model.kind,
+      base,
+      direction,
+      parameterIndex: model.unknowns[affine.freeCols[0]],
+      low: -Infinity,
+      high: Infinity,
+      feasible: true,
+    };
+    for (const e of model.ineqs) {
+      const lhsBase = e.coefs.reduce((s, c, k) => s + c * (affine.particular[k] || 0), 0);
+      const lhsDir = e.coefs.reduce((s, c, k) => s + c * (dir[k] || 0), 0);
+      addInequalityRange(range, -lhsDir, e.rhs - lhsBase);
+    }
+    if (range.low > range.high + EPS) range.feasible = false;
+    return range;
+  }
+
+  function vectorFromRangeAt(range, t) {
+    return range.base.map((v, i) => cleanZero(v + t * (range.direction[i] || 0)));
+  }
+
+  function optimizeCompletionModel(model) {
+    if (model.infeasible) return { status: "infeasible" };
+    const q = model.unknowns.length;
+    const sense = model.target.objective;
+
+    if (q === 0) {
+      return completionFeasible(model, [])
+        ? { status: "unique", values: model.values.slice(), objective: completionObjective(model, []) }
+        : { status: "infeasible" };
+    }
+
+    const baseAffine = affineSystem(model.eqs, q);
+    if (baseAffine.inconsistent) return { status: "infeasible" };
+
+    const need = q - baseAffine.rank;
+    const candidates = [];
+    function addCandidate(coords) {
+      if (!completionFeasible(model, coords)) return;
+      candidates.push({
+        coords: coords.map(cleanZero),
+        values: completionVector(model, coords),
+        objective: completionObjective(model, coords),
+      });
+    }
+
+    if (need === 0) {
+      addCandidate(baseAffine.particular);
+    } else if (need > 0 && need <= model.ineqs.length && combinationCount(model.ineqs.length, need) <= MAX_COMPLETION_COMBINATIONS) {
+      forEachCombination(model.ineqs.length, need, (picked) => {
+        const eqs = model.eqs.concat(picked.map((idx) => model.ineqs[idx]));
+        const affine = affineSystem(eqs, q);
+        if (!affine.inconsistent && affine.dof === 0) addCandidate(affine.particular);
+      });
+    }
+
+    if (candidates.length > 0) {
+      let best = candidates[0].objective;
+      for (const c of candidates) {
+        if ((sense === "max" && c.objective > best + EPS) || (sense === "min" && c.objective < best - EPS)) {
+          best = c.objective;
+        }
+      }
+      const bestCandidates = candidates.filter((c) => Math.abs(c.objective - best) < EPS);
+      const optEqs = model.eqs.concat([{ coefs: model.obj.slice(), rhs: best - model.objConst }]);
+      const optAffine = affineSystem(optEqs, q);
+      if (!optAffine.inconsistent) {
+        if (optAffine.dof === 0) {
+          const coords = optAffine.particular;
+          if (completionFeasible(model, coords)) {
+            return { status: "unique", values: completionVector(model, coords), objective: best };
+          }
+        } else if (optAffine.dof === 1) {
+          const range = completionRangeFromAffine(model, optAffine);
+          if (range && range.feasible) {
+            return { status: "range", range, objective: best };
+          }
+        }
+      }
+      if (bestCandidates.length === 1) {
+        return { status: "unique", values: bestCandidates[0].values, objective: best };
+      }
+      return { status: "underdetermined", objective: best };
+    }
+
+    if (baseAffine.dof === 1) {
+      const range = completionRangeFromAffine(model, baseAffine);
+      if (!range || !range.feasible) return { status: "infeasible" };
+      const objRange = objectiveRange(model.target.c, range);
+      const dir = objRange ? objRange.direction : 0;
+      if (Math.abs(dir) < EPS) {
+        return { status: "range", range, objective: objRange ? objRange.base : null };
+      }
+      const chooseHigh = (sense === "max" && dir > 0) || (sense === "min" && dir < 0);
+      const t = chooseHigh ? range.high : range.low;
+      if (!isFinite(t)) return { status: "unbounded" };
+      const values = vectorFromRangeAt(range, t);
+      return { status: "unique", values, objective: objectiveValue(model.target.c, values) };
+    }
+
+    return { status: "underdetermined" };
+  }
+
+  function completeKnownOptimal(kind, lp, dual, rawValues) {
+    const target = targetForKnownSide(kind, lp, dual);
+    const values = normalizedVector(rawValues, target.c.length);
+    const unknowns = [];
+    let known = 0;
+    for (let i = 0; i < values.length; i++) {
+      if (isKnown(values[i])) known++;
+      else unknowns.push(i);
+    }
+    if (unknowns.length === 0 || known === 0) {
+      return { status: "skipped", values };
+    }
+    const model = buildCompletionModel(kind, lp, dual, values, unknowns);
+    const result = optimizeCompletionModel(model);
+    return { ...result, values: result.values || values, unknowns };
+  }
+
   function cleanZero(v) {
     return Math.abs(v) < EPS ? 0 : v;
   }
@@ -481,11 +737,40 @@
     const m = lp.constraints.length;
     const n = lp.c.length;
     const steps = [];
-    const x = normalizedVector(xStar, n);
+    let x = normalizedVector(xStar, n);
 
     const feasP = primalFeasible(lp, x);
     steps.push({ kind: "primal-feasibility", feasible: feasP.ok, issues: feasP.issues, partial: feasP.partial });
     if (!feasP.ok) return { steps, ok: false, error: "primal-infeasible" };
+
+    const completion = completeKnownOptimal("primal", lp, dual, x);
+    if (completion.status === "unique") {
+      x = completion.values;
+      steps.push({
+        kind: "known-completion",
+        side: "primal",
+        symbol: "x",
+        values: x,
+        unknowns: completion.unknowns,
+        objective: completion.objective,
+      });
+    } else if (completion.status === "range") {
+      steps.push({
+        kind: "known-completion-range",
+        side: "primal",
+        symbol: "x",
+        range: completion.range,
+        unknowns: completion.unknowns,
+        objective: completion.objective,
+      });
+    } else if (completion.status === "infeasible" || completion.status === "unbounded") {
+      steps.push({ kind: "known-completion-failed", side: "primal", symbol: "x", reason: completion.status });
+      return {
+        steps,
+        ok: false,
+        error: completion.status === "infeasible" ? "primal-infeasible" : "underdetermined",
+      };
+    }
 
     const primalActive = lp.constraints.map((c, i) => {
       const lhs = knownLinearValue(c.a, x);
@@ -577,11 +862,40 @@
     const m = lp.constraints.length;
     const n = lp.c.length;
     const steps = [];
-    const y = normalizedVector(yStar, m);
+    let y = normalizedVector(yStar, m);
 
     const feasD = dualFeasible(dual, y);
     steps.push({ kind: "dual-feasibility", feasible: feasD.ok, issues: feasD.issues, partial: feasD.partial });
     if (!feasD.ok) return { steps, ok: false, error: "dual-infeasible" };
+
+    const completion = completeKnownOptimal("dual", lp, dual, y);
+    if (completion.status === "unique") {
+      y = completion.values;
+      steps.push({
+        kind: "known-completion",
+        side: "dual",
+        symbol: "y",
+        values: y,
+        unknowns: completion.unknowns,
+        objective: completion.objective,
+      });
+    } else if (completion.status === "range") {
+      steps.push({
+        kind: "known-completion-range",
+        side: "dual",
+        symbol: "y",
+        range: completion.range,
+        unknowns: completion.unknowns,
+        objective: completion.objective,
+      });
+    } else if (completion.status === "infeasible" || completion.status === "unbounded") {
+      steps.push({ kind: "known-completion-failed", side: "dual", symbol: "y", reason: completion.status });
+      return {
+        steps,
+        ok: false,
+        error: completion.status === "infeasible" ? "dual-infeasible" : "underdetermined",
+      };
+    }
 
     const dualActive = dual.constraints.map((c, j) => {
       const lhs = knownLinearValue(c.a, y);

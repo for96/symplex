@@ -221,7 +221,7 @@ function FracInput({ value, onChange, ariaLabel }) {
       value={text}
       onFocus={() => setFocused(true)}
       onChange={(e) => commit(e.target.value)}
-      onBlur={() => { setFocused(false); setText(formatFracInput(value)); }}
+      onBlur={(e) => { setFocused(false); setText(formatFracInput(parseFracInput(e.target.value))); }}
       aria-label={ariaLabel || ""}
       placeholder="?"
     />
@@ -503,6 +503,10 @@ function StepHeader({ idx, title }) {
       <span className="dy-step-num">{idx}.</span> <span className="dy-step-title" dangerouslySetInnerHTML={{ __html: title }} />
     </div>
   );
+}
+
+function RichText({ className = "dy-explain", html }) {
+  return <div className={className} dangerouslySetInnerHTML={{ __html: html || "" }} />;
 }
 
 function FeasibilityRow({ feasible, issues, t, lp, dual, isDual, partial, parametric }) {
@@ -1213,12 +1217,44 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
           <FeasibilityRow feasible={step.feasible} issues={step.issues} t={t} lp={lp} isDual={false} partial={step.partial} />
         </div>
       );
+    } else if (step.kind === "known-completion") {
+      elems.push(
+        <div className="dy-step solved" key={stepIdx}>
+          <StepHeader idx={stepIdx} title={t.dyStepKnownCompletion} />
+          <div className="dy-step-body">
+            <RichText html={t.dyExplainKnownCompletion} />
+            <SolutionVector values={step.values} symbol={step.symbol} t={t} />
+          </div>
+        </div>
+      );
+    } else if (step.kind === "known-completion-range") {
+      elems.push(
+        <div className="dy-step solved" key={stepIdx}>
+          <StepHeader idx={stepIdx} title={t.dyStepKnownCompletion} />
+          <div className="dy-step-body">
+            <RichText html={t.dyExplainKnownCompletion} />
+            <SolutionRange range={step.range} symbol={step.symbol} t={t} />
+          </div>
+        </div>
+      );
+    } else if (step.kind === "known-completion-failed") {
+      elems.push(
+        <div className="dy-step ko" key={stepIdx}>
+          <StepHeader idx={stepIdx} title={t.dyStepKnownCompletion} />
+          <div className="dy-step-body">
+            <RichText html={t.dyExplainKnownCompletion} />
+            <div className="dy-note">
+              {step.reason === "infeasible" ? t.dyKnownCompletionInfeasible : t.dyKnownCompletionUnbounded}
+            </div>
+          </div>
+        </div>
+      );
     } else if (step.kind === "primal-active") {
       elems.push(
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepPrimalActive} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainPrimalActive}</div>
+            <RichText html={t.dyExplainPrimalActive} />
             <PrimalActiveTable constraints={step.constraints} xStar={knownX} lp={lp} t={t} />
           </div>
         </div>
@@ -1253,7 +1289,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepXPositive} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainXPositive}</div>
+            <RichText html={t.dyExplainXPositive} />
             {step.positive.length > 0 ? (
               <div className="dy-deductions">
                 {step.positive.map((j) => (
@@ -1280,7 +1316,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepDualActive} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainDualActive}</div>
+            <RichText html={t.dyExplainDualActive} />
             <DualActiveTable constraints={step.constraints} yStar={knownY} t={t} />
           </div>
         </div>
@@ -1290,7 +1326,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepXZero} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainXZero}</div>
+            <RichText html={t.dyExplainXZero} />
             {step.zeros.length > 0 ? (
               <div className="dy-deductions">
                 {step.zeros.map((j) => (
@@ -1315,7 +1351,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepYPositive} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainYPositive}</div>
+            <RichText html={t.dyExplainYPositive} />
             {step.positive.length > 0 ? (
               <div className="dy-deductions">
                 {step.positive.map((i) => (
@@ -1342,7 +1378,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepSystem} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainSystem}</div>
+            <RichText html={t.dyExplainSystem} />
             <SystemView eqs={step.eqs} unknowns={step.unknowns} varSymbol={step.varSymbol} t={t} />
           </div>
         </div>
@@ -1352,9 +1388,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step ko" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepUnderdetermined} />
           <div className="dy-step-body">
-            <div className="dy-explain">
-              {t.dyExplainUnderdetermined(step.numEq, step.numUnknowns)}
-            </div>
+            <RichText html={t.dyExplainUnderdetermined(step.numEq, step.numUnknowns)} />
           </div>
         </div>
       );
@@ -1363,9 +1397,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step ko" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepInconsistent} />
           <div className="dy-step-body">
-            <div className="dy-explain">
-              {t.dyExplainInconsistent(Simplex.fmt(step.lhs, 3), Simplex.fmt(step.rhs, 3))}
-            </div>
+            <RichText html={t.dyExplainInconsistent(Simplex.fmt(step.lhs, 3), Simplex.fmt(step.rhs, 3))} />
           </div>
         </div>
       );
@@ -1374,7 +1406,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step ko" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepSystemError} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainSystemError}</div>
+            <RichText html={t.dyExplainSystemError} />
           </div>
         </div>
       );
@@ -1392,7 +1424,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step solved" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepSolutionDualRange} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainRange}</div>
+            <RichText html={t.dyExplainRange} />
             <SolutionRange range={step.range} symbol="y" t={t} />
           </div>
         </div>
@@ -1411,7 +1443,7 @@ function StepsView({ result, lp, dual, knownType, knownX, knownY, t }) {
         <div className="dy-step solved" key={stepIdx}>
           <StepHeader idx={stepIdx} title={t.dyStepSolutionPrimalRange} />
           <div className="dy-step-body">
-            <div className="dy-explain">{t.dyExplainRange}</div>
+            <RichText html={t.dyExplainRange} />
             <SolutionRange range={step.range} symbol="x" t={t} />
           </div>
         </div>
