@@ -1,7 +1,7 @@
 {
-  "name": "Simplesso — Ricerca Operativa",
-  "short_name": "Simplesso",
-  "description": "Simulatore didattico del metodo del simplesso, della dualità e dei tagli (Gomory/cover) per corsi di Ricerca Operativa.",
+  "name": "Ricerca Operativa",
+  "short_name": "R. Operativa",
+  "description": "Webapp didattica per simplesso, dualità, tagli e modellazione CNF con vincoli lineari binari.",
   "lang": "it",
   "dir": "ltr",
   "start_url": "./",

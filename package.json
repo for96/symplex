@@ -8,6 +8,7 @@
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
     "watch": "node build.mjs --watch",
+    "test:cnf": "node scripts/test-cnf.mjs",
     "icons": "node scripts/generate-icons.js"
   },
   "engines": {

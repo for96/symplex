@@ -2,7 +2,7 @@
    ProblemEditor, DualPanel, GeometryView,
    TableauView, StepBar, Narration, StatGrid, StatusPill, SensitivityPanel,
    CutsPanel,
-   DualityWorkspace,
+   DualityWorkspace, CnfWorkspace,
    TweaksPanel, TweakSection, TweakRadio, TweakToggle */
 
 const { useState: useStateApp, useEffect: useEffectApp, useMemo: useMemoApp, useRef: useRefApp } = React;
@@ -48,10 +48,9 @@ const LANGS = { IT: "it", EN: "en" };
 // of that kind immediately (no separate "Apply" step). To remove cuts use the ×
 // in the CutsPanel list.
 const CUT_KINDS = { COVER: "cover", GOMORY: "gomory" };
-// Top-level workspace mode. The Duality view is fully independent of the
-// simplex one — it has its own editor, its own state, and is meant for
-// chapter-4-style exercises (complementary slackness, optimum without simplex).
-const MODES = { SIMPLEX: "simplex", DUALITY: "duality" };
+// Top-level workspaces are independent: simplex, complementary-slackness
+// exercises, and propositional-logic/CNF modeling.
+const MODES = { SIMPLEX: "simplex", DUALITY: "duality", CNF: "cnf" };
 
 function lpFingerprint(lp) {
   // Canonical, version-stable signature for an LP. Used to dedupe history.
@@ -134,9 +133,14 @@ function pushHistory(lp) {
 // duality workspace). On screens > 1180px the tab bar is hidden via CSS and all panels
 // are shown side-by-side; below that breakpoint we render the tab bar and let
 // CSS hide all but the active section via the `.mobile-section-X` class on
-// `.app-main`. The Duality tab is special — it toggles `mode` to DUALITY which
-// swaps the entire main view for `<DualityWorkspace>`.
-const MOBILE_TABS = { PROBLEM: "problem", GEOMETRY: "geometry", TABLEAU: "tableau", DUALITY: "duality" };
+// `.app-main`. Duality and CNF swap the entire main view for their workspace.
+const MOBILE_TABS = {
+  PROBLEM: "problem",
+  GEOMETRY: "geometry",
+  TABLEAU: "tableau",
+  DUALITY: "duality",
+  CNF: "cnf",
+};
 
 function App() {
   const [lp, setLp] = useStateApp(() => {
@@ -426,9 +430,8 @@ function App() {
               ☾
             </button>
           </div>
-          {/* The .mode-toggle class is a marker for CSS to hide this control
-              on mobile widths — the mobile tab bar takes over the Simplex/Duality
-              switch (plus a per-section selector). */}
+          {/* Hidden at mobile widths, where the tab bar becomes the workspace
+              and simplex-section selector. */}
           <div className="seg mode-toggle" role="group" aria-label={t.modeToggle}>
             <button
               className={mode === MODES.SIMPLEX ? "active" : ""}
@@ -445,6 +448,14 @@ function App() {
               title={t.modeDualityDesc}
             >
               {t.modeDuality}
+            </button>
+            <button
+              className={mode === MODES.CNF ? "active" : ""}
+              aria-pressed={mode === MODES.CNF}
+              onClick={() => setMode(MODES.CNF)}
+              title={t.modeCnfDesc}
+            >
+              {t.modeCnf}
             </button>
           </div>
           {mode === MODES.SIMPLEX && (
@@ -496,15 +507,20 @@ function App() {
         </div>
       </header>
 
-      {/* Mobile/tablet tab bar — hidden via CSS on screens > 1180px. The duality tab
-          toggles top-level `mode`; the other three swap which .col is visible.
+      {/* Mobile/tablet tab bar — hidden via CSS on screens > 1180px. Duality and
+          CNF toggle top-level workspaces; the other tabs select a simplex column.
           We also scroll the new section to the top so the user doesn't land
           mid-page after a tab switch. */}
       {(() => {
-        const activeTab = mode === MODES.DUALITY ? MOBILE_TABS.DUALITY : mobileSection;
+        const activeTab =
+          mode === MODES.DUALITY ? MOBILE_TABS.DUALITY :
+          mode === MODES.CNF ? MOBILE_TABS.CNF :
+          mobileSection;
         function handleMobileTab(tab) {
           if (tab === MOBILE_TABS.DUALITY) {
             setMode(MODES.DUALITY);
+          } else if (tab === MOBILE_TABS.CNF) {
+            setMode(MODES.CNF);
           } else {
             setMode(MODES.SIMPLEX);
             setMobileSection(tab);
@@ -549,12 +565,22 @@ function App() {
             >
               {t.modeDuality}
             </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === MOBILE_TABS.CNF}
+              className={activeTab === MOBILE_TABS.CNF ? "active" : ""}
+              onClick={() => handleMobileTab(MOBILE_TABS.CNF)}
+            >
+              {t.modeCnf}
+            </button>
           </nav>
         );
       })()}
 
       {mode === MODES.DUALITY ? (
         <DualityWorkspace t={t} />
+      ) : mode === MODES.CNF ? (
+        <CnfWorkspace t={t} />
       ) : (
       <div className={`app-main mobile-section-${mobileSection}`}>
         {/* Left column — input + dual */}

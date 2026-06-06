@@ -1,6 +1,6 @@
 # Simplesso — Simulatore di Ricerca Operativa
 
-Webapp didattica per il corso di Ricerca Operativa: algoritmo del **simplesso** a due fasi, **tagli di Gomory** e di **copertura** per problemi interi, **analisi di sensitività** e **dualità**.
+Webapp didattica per il corso di Ricerca Operativa: algoritmo del **simplesso** a due fasi, **tagli di Gomory** e di **copertura** per problemi interi, **analisi di sensitività**, **dualità** e modellazione logica in **CNF**.
 
 Gira tutto nel browser in localStorage. React 18 caricato da CDN, JSX pre-compilato via esbuild in un singolo bundle.
 
@@ -13,6 +13,7 @@ Gira tutto nel browser in localStorage. React 18 caricato da CDN, JSX pre-compil
 - **Analisi di sensitività** sui costi e sui termini noti
 - **Problema duale** generato automaticamente con visualizzazione
 - **Workspace di dualità** separato: dato `x*` ricava `y*` (e viceversa) tramite scarti complementari, completo dei passaggi
+- **Workspace CNF**: interpreta frasi controllate o formule logiche, applica riscritture, Boole e De Morgan, quindi genera vincoli lineari su variabili binarie
 - Tema chiaro/scuro, italiano/inglese, tipografia accademica
 
 ## Sviluppo locale
@@ -51,12 +52,14 @@ src/
   simplex.js            # Algoritmo: due fasi, pivoting, tagli, sensitività, duale
   geometry.js           # Vertici regione ammissibile, clipping rette
   duality.js            # Risoluzione duale via scarti complementari
+  cnf.js                # Parser logico, trasformazione CNF e codifica lineare
   i18n.js               # Dizionario IT/EN
   app.jsx               # Root component, orchestrazione stato
   problem.jsx           # Editor LP/ILP
   tableau.jsx           # Vista tableau + step bar + tagli
   geometry-view.jsx     # SVG regione ammissibile
   duality-view.jsx      # Workspace dualità (cap. 4)
+  cnf-view.jsx          # Workspace di modellazione dei predicati logici
   tweaks-panel.jsx      # Pannello sviluppatore (palette, densità, tema)
 ```
 
