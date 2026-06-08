@@ -118,22 +118,145 @@ function positiveItalianAssertion(raw) {
   let text = String(raw || "")
     .replace(/^[\s,;:.]+|[\s,;:.]+$/g, "")
     .replace(/^(?:se|qualora)\s+/i, "")
+    .replace(/^["“”]|["“”]$/g, "")
+    .replace(/\b(?:isn't|aren't|wasn't|weren't)\b/gi, (word) => ({
+      "isn't": "is not",
+      "aren't": "are not",
+      "wasn't": "was not",
+      "weren't": "were not",
+    })[word.toLowerCase()])
+    .replace(/\b(?:doesn't|don't|didn't|won't|can't)\b/gi, (word) => ({
+      "doesn't": "does not",
+      "don't": "do not",
+      "didn't": "did not",
+      "won't": "will not",
+      "can't": "can not",
+    })[word.toLowerCase()])
+    .replace(/\bcannot\b/gi, "can not")
     .replace(/\s+/g, " ")
     .trim();
-  const negated = /\b(?:non|not)\b/i.test(text);
+  const negated =
+    /\b(?:non|not|never|mai)\b/i.test(text) ||
+    /^(?:nessun[oa]?|no)\s+/i.test(text);
   if (!negated) return { label: text, negated: false };
 
   text = text
+    .replace(/\bdoes(?:\s+not|n't)\s+([a-z]+)\b/gi, (_, verb) => {
+      if (verb === "have") return "has";
+      if (verb === "be") return "is";
+      if (/[^aeiou]y$/i.test(verb)) return `${verb.slice(0, -1)}ies`;
+      if (/(?:s|sh|ch|x|z|o)$/i.test(verb)) return `${verb}es`;
+      return `${verb}s`;
+    })
     .replace(/\bnon\s+si\s+sia\b/i, "si è")
     .replace(/\bnon\s+sia\b/i, "è")
     .replace(/\bnon\s+abbia\b/i, "ha")
     .replace(/\bnon\s+venga\b/i, "viene")
     .replace(/\bnon\s+ha\b/i, "ha")
     .replace(/\bnon\s+è\b/i, "è")
-    .replace(/\b(?:non|not)\b/i, "")
+    .replace(/^(?:nessun[oa]?|no)\s+/i, "")
+    .replace(/\b(?:non|not|never|mai)\b/i, "")
+    .replace(/\b(?:do|did)\s+(?=[a-z])/i, "")
     .replace(/\s+/g, " ")
     .trim();
   return { label: text, negated: true };
+}
+
+function naturalText(source) {
+  return normalizeSymbols(source)
+    .replace(/[’`]/g, "'")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;:.]+|[\s,;:.!?]+$/g, "")
+    .trim();
+}
+
+function validateNaturalQuotes(text) {
+  let quoted = false;
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] === '"' && text[index - 1] !== "\\") quoted = !quoted;
+  }
+  if (quoted) throw new Error("cnf-unclosed-quote");
+}
+
+function naturalScanStateAt(text, targetIndex) {
+  let depth = 0;
+  let quoted = false;
+  for (let index = 0; index < targetIndex; index++) {
+    const char = text[index];
+    if (char === '"' && text[index - 1] !== "\\") {
+      quoted = !quoted;
+    } else if (!quoted && char === "(") {
+      depth++;
+    } else if (!quoted && char === ")") {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return { depth, quoted };
+}
+
+function naturalTopLevelMatches(text, pattern) {
+  const regex = new RegExp(pattern, "gi");
+  const matches = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const state = naturalScanStateAt(text, match.index);
+    if (state.depth === 0 && !state.quoted) matches.push(match);
+    if (match[0].length === 0) regex.lastIndex++;
+  }
+  return matches;
+}
+
+function splitNaturalTopLevel(text, pattern, useLast = false) {
+  const matches = naturalTopLevelMatches(text, pattern);
+  if (matches.length === 0) return null;
+  const match = useLast ? matches[matches.length - 1] : matches[0];
+  const left = text.slice(0, match.index).trim();
+  const right = text.slice(match.index + match[0].length).trim();
+  if (!left || !right) return null;
+  return { left, right, marker: match[0] };
+}
+
+function splitNaturalPunctuation(text) {
+  let depth = 0;
+  let quoted = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === '"' && text[index - 1] !== "\\") {
+      quoted = !quoted;
+      continue;
+    }
+    if (quoted) continue;
+    if (char === "(") depth++;
+    else if (char === ")") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && (char === "," || char === ";")) {
+      const left = text.slice(0, index).trim();
+      const right = text.slice(index + 1).trim();
+      if (left && right) return { left, right };
+    }
+  }
+  return null;
+}
+
+function isWrappedNaturalExpression(text) {
+  if (!text.startsWith("(") || !text.endsWith(")")) return false;
+  let depth = 0;
+  let quoted = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === '"' && text[index - 1] !== "\\") {
+      quoted = !quoted;
+      continue;
+    }
+    if (quoted) continue;
+    if (char === "(") depth++;
+    else if (char === ")") depth--;
+    if (depth === 0 && index < text.length - 1) return false;
+  }
+  return depth === 0;
+}
+
+function joinNaturalAst(type, nodes) {
+  return nodes.reduce((left, right) => binary(type, left, right));
 }
 
 function createNaturalRegistry() {
@@ -157,16 +280,23 @@ function naturalAtomName(registry, label) {
 }
 
 function naturalExpressionTokens(source, registry) {
-  const text = normalizeSymbols(source)
+  const text = naturalText(source)
     .replace(/\boppure\s+se\b/gi, " oppure ")
     .replace(/\bo\s+se\b/gi, " o ")
     .replace(/\band\s+if\b/gi, " and ")
-    .replace(/\bor\s+if\b/gi, " or ");
-  const marker = /(<=>|<->|=>|->|&&|\|\||[()!&|^]|\bxor\b|\boppure\b|\bor\b|\band\b|\be\b|\bo\b)/gi;
+    .replace(/\bor\s+if\b/gi, " or ")
+    .replace(/\bnon\s+solo\b/gi, "")
+    .replace(/\bma\s+anche\b/gi, " e ")
+    .replace(/\b(?:nonché|nonche|ed)\b/gi, " e ")
+    .replace(/\b(?:and\s+also|as\s+well\s+as)\b/gi, " and ")
+    .replace(/\bod\b/gi, " o ")
+    .replace(/\b(?:ma|però|pero|however)\b/gi, " e ");
+  const marker = /(<=>|<->|=>|->|&&|\|\||[()!&|^]|\b(?:non|not)\b(?=\s*\()|\bxor\b|\boppure\b|\bor\b|\band\b|\be\b|\bo\b)/gi;
   const pieces = [];
   let cursor = 0;
   let match;
   while ((match = marker.exec(text)) !== null) {
+    if (naturalScanStateAt(text, match.index).quoted) continue;
     pieces.push({ kind: "text", value: text.slice(cursor, match.index) });
     pieces.push({ kind: "marker", value: match[0] });
     cursor = match.index + match[0].length;
@@ -202,7 +332,7 @@ function naturalExpressionTokens(source, registry) {
       value === "&&" || value === "&" || value === "and" || value === "e" ? "AND" :
       value === "||" || value === "|" || value === "or" || value === "oppure" || value === "o" ? "OR" :
       value === "xor" || value === "^" ? "XOR" :
-      value === "!" ? "NOT" :
+      value === "!" || value === "non" || value === "not" ? "NOT" :
       value === "(" ? "LPAREN" :
       value === ")" ? "RPAREN" : null;
     if (type) tokens.push({ type, value: piece.value });
@@ -211,7 +341,52 @@ function naturalExpressionTokens(source, registry) {
 }
 
 function parseNaturalExpression(source, registry) {
-  const tokens = naturalExpressionTokens(source, registry);
+  let text = naturalText(source);
+
+  const neitherPrefix = text.match(/^(?:né|ne|neither)\s+/i);
+  if (neitherPrefix) {
+    const body = text.slice(neitherPrefix[0].length);
+    const parts = [];
+    let cursor = 0;
+    for (const match of naturalTopLevelMatches(body, "(?:né|\\bne\\b|\\bnor\\b)")) {
+      parts.push(body.slice(cursor, match.index).trim());
+      cursor = match.index + match[0].length;
+    }
+    parts.push(body.slice(cursor).trim());
+    const nodes = parts.filter(Boolean).map((part) => unary("not", parseNaturalClause(part, registry)));
+    if (nodes.length >= 2) return joinNaturalAst("and", nodes);
+  }
+
+  if (/^sia\s+/i.test(text)) {
+    const body = text.replace(/^sia\s+/i, "");
+    const correlative = splitNaturalTopLevel(body, "\\b(?:sia|che)\\b");
+    if (correlative) text = `${correlative.left} e ${correlative.right}`;
+  }
+  if (/^both\s+/i.test(text)) text = text.replace(/^both\s+/i, "");
+  if (/^(?:either|o|oppure)\s+/i.test(text)) {
+    text = text.replace(/^(?:either|o|oppure)\s+/i, "");
+  }
+
+  const exclusiveMatches = naturalTopLevelMatches(
+    text,
+    "\\s*,?\\s*(?:ma\\s+non\\s+(?:entrambi|entrambe)|but\\s+not\\s+both)\\s*$"
+  );
+  if (exclusiveMatches.length > 0) {
+    const exclusive = exclusiveMatches[exclusiveMatches.length - 1];
+    const alternatives = splitNaturalTopLevel(
+      text.slice(0, exclusive.index).trim(),
+      "\\b(?:o|oppure|or)\\b"
+    );
+    if (alternatives) {
+      return binary(
+        "xor",
+        parseNaturalClause(alternatives.left, registry),
+        parseNaturalClause(alternatives.right, registry)
+      );
+    }
+  }
+
+  const tokens = naturalExpressionTokens(text, registry);
   return parseTokens({ tokens, assertions: registry.assertions }).ast;
 }
 
@@ -261,90 +436,148 @@ function parseItalianCasePhrase(source) {
   };
 }
 
+function parseNaturalClause(source, registry, depth = 0) {
+  if (depth > 64) throw new Error("cnf-too-large");
+  const text = naturalText(source)
+    .replace(/\boppure\s+se\b/gi, "oppure ")
+    .replace(/\bo\s+se\b/gi, "o ")
+    .replace(/\band\s+if\b/gi, "and ")
+    .replace(/\bor\s+if\b/gi, "or ");
+  if (!text) throw new Error("cnf-empty-input");
+
+  if (isWrappedNaturalExpression(text)) {
+    return parseNaturalClause(text.slice(1, -1), registry, depth + 1);
+  }
+
+  const conditionalPrefix = text.match(
+    /^(?:se|qualora|if|nel\s+caso\s+in\s+cui|quando|ogni\s+volta\s+che|whenever|provided\s+that|purché|purche)\s+/i
+  );
+  if (conditionalPrefix) {
+    const body = text.slice(conditionalPrefix[0].length);
+    const explicitThen = splitNaturalTopLevel(body, "\\b(?:allora|then)\\b");
+    const parts = explicitThen || splitNaturalPunctuation(body);
+    if (parts) {
+      const condition = parseNaturalClause(parts.left, registry, depth + 1);
+      const otherwise = splitNaturalTopLevel(
+        parts.right,
+        "\\b(?:altrimenti|otherwise|in\\s+caso\\s+contrario)\\b"
+      );
+      if (otherwise) {
+        return binary(
+          "and",
+          binary("implies", condition, parseNaturalClause(otherwise.left, registry, depth + 1)),
+          binary("implies", unary("not", condition), parseNaturalClause(otherwise.right, registry, depth + 1))
+        );
+      }
+      return binary("implies", condition, parseNaturalClause(parts.right, registry, depth + 1));
+    }
+  }
+
+  const iff = splitNaturalTopLevel(
+    text,
+    "(?:\\b(?:se\\s+e\\s+(?:solo|soltanto)\\s+se|if\\s+and\\s+only\\s+if|iff|equivale\\s+a|is\\s+equivalent\\s+to|esattamente\\s+quando|exactly\\s+when)\\b|(?:è|e')\\s+equivalente\\s+a\\b)"
+  ) || splitNaturalTopLevel(
+    text,
+    "\\s+(?:è|e')\\s+(?:una\\s+)?condizione\\s+necessaria\\s+e\\s+sufficiente\\s+(?:per|affinché|affinche)\\s+"
+  ) || splitNaturalTopLevel(
+    text,
+    "\\s+is\\s+(?:a\\s+)?necessary\\s+and\\s+sufficient\\s+condition\\s+for\\s+"
+  );
+  if (iff) {
+    return binary(
+      "iff",
+      parseNaturalClause(iff.left, registry, depth + 1),
+      parseNaturalClause(iff.right, registry, depth + 1)
+    );
+  }
+
+  const unless = splitNaturalTopLevel(text, "\\b(?:a\\s+meno\\s+che|unless)\\b");
+  if (unless) {
+    const left = parseNaturalClause(unless.left, registry, depth + 1);
+    const condition = parseNaturalClause(unless.right, registry, depth + 1);
+    return binary("implies", unary("not", condition), left);
+  }
+
+  const onlyIf = splitNaturalTopLevel(
+    text,
+    "\\b(?:(?:solo|soltanto|unicamente)\\s+(?:se|quando)|only\\s+(?:if|when))\\b"
+  );
+  if (onlyIf) {
+    return binary(
+      "implies",
+      parseNaturalClause(onlyIf.left, registry, depth + 1),
+      parseNaturalClause(onlyIf.right, registry, depth + 1)
+    );
+  }
+
+  const sufficient = splitNaturalTopLevel(
+    text,
+    "\\s+(?:è|e')\\s+(?:una\\s+condizione\\s+)?sufficient[ei]?\\s+(?:perché|perche|affinché|affinche|per)\\s+"
+  ) || splitNaturalTopLevel(
+    text,
+    "\\s+is\\s+(?:a\\s+)?sufficient(?:\\s+condition)?\\s+for\\s+"
+  );
+  if (sufficient) {
+    return binary(
+      "implies",
+      parseNaturalClause(sufficient.left, registry, depth + 1),
+      parseNaturalClause(sufficient.right, registry, depth + 1)
+    );
+  }
+
+  const necessary = splitNaturalTopLevel(
+    text,
+    "\\s+(?:è|e')\\s+(?:una\\s+condizione\\s+)?necessari[oa]?\\s+(?:perché|perche|affinché|affinche|per)\\s+"
+  ) || splitNaturalTopLevel(
+    text,
+    "\\s+is\\s+(?:a\\s+)?necessary(?:\\s+condition)?\\s+for\\s+"
+  );
+  if (necessary) {
+    const left = parseNaturalClause(necessary.left, registry, depth + 1);
+    const right = parseNaturalClause(necessary.right, registry, depth + 1);
+    return binary("implies", right, left);
+  }
+
+  const direct = splitNaturalTopLevel(
+    text,
+    "\\b(?:implica(?:\\s+che)?|implies(?:\\s+that)?|comporta(?:\\s+che)?|garantisce(?:\\s+che)?|ensures(?:\\s+that)?|quindi|pertanto|therefore|richiede|requires)\\b"
+  );
+  if (direct) {
+    return binary(
+      "implies",
+      parseNaturalClause(direct.left, registry, depth + 1),
+      parseNaturalClause(direct.right, registry, depth + 1)
+    );
+  }
+
+  const reverse = splitNaturalTopLevel(
+    text,
+    "(?:\\b(?:nel\\s+caso\\s+in\\s+cui|a\\s+condizione\\s+che|a\\s+patto\\s+che|purche|provided\\s+that|as\\s+long\\s+as|ogni\\s+volta\\s+che|whenever|quando|when|se|if|perche|because)\\b|(?:purché|perché)(?=\\s|$))"
+  );
+  if (reverse) {
+    const left = parseNaturalClause(reverse.left, registry, depth + 1);
+    const right = parseNaturalClause(reverse.right, registry, depth + 1);
+    return binary("implies", right, left);
+  }
+
+  return parseNaturalExpression(text, registry);
+}
+
 function parseNaturalPhrase(source) {
   const specialCase = parseItalianCasePhrase(source);
   if (specialCase) return specialCase;
 
-  const text = normalizeSymbols(source)
-    .replace(/\s+/g, " ")
-    .replace(/^[\s,;:.]+|[\s,;:.!?]+$/g, "")
-    .trim();
+  const text = naturalText(source);
   if (!text) throw new Error("cnf-empty-input");
+  validateNaturalQuotes(text);
 
   const registry = createNaturalRegistry();
-  let left;
-  let right;
-  let type;
-  let reverseOperands = false;
-
-  let match = text.match(/^se\s+([\s\S]+)\s*,?\s+allora\s+([\s\S]+)$/i);
-  if (match) {
-    left = match[1];
-    right = match[2];
-    type = "implies";
-  }
-
-  if (!type) {
-    match = text.match(/^if\s+([\s\S]+)\s*,?\s+then\s+([\s\S]+)$/i);
-    if (match) {
-      left = match[1];
-      right = match[2];
-      type = "implies";
-    }
-  }
-
-  if (!type) {
-    match = text.match(/^([\s\S]+?)\s+se\s+e\s+solo\s+se\s+([\s\S]+)$/i)
-      || text.match(/^([\s\S]+?)\s+if\s+and\s+only\s+if\s+([\s\S]+)$/i);
-    if (match) {
-      left = match[1];
-      right = match[2];
-      type = "iff";
-    }
-  }
-
-  if (!type) {
-    match = text.match(/^([\s\S]+?)\s+(?:implica|implies)\s+([\s\S]+)$/i);
-    if (match) {
-      left = match[1];
-      right = match[2];
-      type = "implies";
-    }
-  }
-
-  if (!type) {
-    match = text.match(/^([\s\S]+?)\s+solo\s+se\s+([\s\S]+)$/i)
-      || text.match(/^([\s\S]+?)\s+only\s+if\s+([\s\S]+)$/i);
-    if (match) {
-      left = match[1];
-      right = match[2];
-      type = "implies";
-    }
-  }
-
-  if (!type) {
-    match = text.match(/^([\s\S]+?)\s+nel caso in cui\s+([\s\S]+)$/i);
-    if (match) {
-      left = match[1];
-      right = match[2];
-      type = "implies";
-      reverseOperands = true;
-    }
-  }
-
-  let ast;
-  if (type) {
-    const leftAst = parseNaturalExpression(left, registry);
-    const rightAst = parseNaturalExpression(right, registry);
-    ast = reverseOperands ? binary(type, rightAst, leftAst) : binary(type, leftAst, rightAst);
-  } else {
-    ast = parseNaturalExpression(text, registry);
-  }
+  const ast = parseNaturalClause(text, registry);
   return {
     ast,
     variables: registry.assertions.map((item) => item.name),
     assertions: registry.assertions,
-    phrasePattern: type || "expression",
+    phrasePattern: "natural",
   };
 }
 

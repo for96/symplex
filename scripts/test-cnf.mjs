@@ -259,6 +259,152 @@ const naturalCorpus = [
 ];
 naturalCorpus.forEach((item) => verifyNatural(item.source, item.shape, item.labels));
 
+const contextualCorpus = [
+  {
+    source: "Se il sensore è attivo, il cancello si apre.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "Il cancello si apre se il sensore è attivo.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "Il cancello si apre quando il sensore è attivo.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "Il cancello si apre purché il badge sia valido.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "Il cancello si apre a condizione che il badge sia valido.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "Il cancello si apre a meno che il blocco sia attivo.",
+    shape: ">(!X2,X1)",
+  },
+  {
+    source: "Il controllo è valido se e soltanto se il codice è corretto.",
+    shape: "=(X1,X2)",
+  },
+  {
+    source: "Il controllo è valido equivale a il codice è corretto.",
+    shape: "=(X1,X2)",
+  },
+  {
+    source: "Il controllo è valido è equivalente a il codice è corretto.",
+    shape: "=(X1,X2)",
+  },
+  {
+    source: "Il badge valido è necessario per consentire l'accesso.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "Il badge valido è sufficiente per consentire l'accesso.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "L'accesso richiede il badge valido.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "Il badge valido implica che l'accesso è consentito.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "O il badge è valido o il codice è corretto.",
+    shape: "|(X1,X2)",
+  },
+  {
+    source: "Né il badge è valido né il codice è corretto.",
+    shape: "&(!X1,!X2)",
+  },
+  {
+    source: "Il badge è valido oppure il codice è corretto, ma non entrambi.",
+    shape: "^(X1,X2)",
+  },
+  {
+    source: "Non solo il badge è valido ma anche il codice è corretto.",
+    shape: "&(X1,X2)",
+  },
+  {
+    source: "Sia il badge è valido che il codice è corretto.",
+    shape: "&(X1,X2)",
+  },
+  {
+    source: "Non (piove oppure nevica).",
+    shape: "!|(X1,X2)",
+  },
+  {
+    source: "Se il badge è valido, allora il cancello si apre, altrimenti resta chiuso.",
+    shape: "&(>(X1,X2),>(!X1,X3))",
+  },
+  {
+    source: "\"ricerca e sviluppo è finanziata\" e il budget è approvato.",
+    shape: "&(X1,X2)",
+    labels: ["ricerca e sviluppo è finanziata", "il budget è approvato"],
+  },
+  {
+    source: "Il badge è valido oppure il badge non è valido.",
+    shape: "|(X1,!X1)",
+  },
+  {
+    source: "The gate opens if the badge is valid.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "The gate opens whenever the badge is valid.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "The gate opens unless the lock is active.",
+    shape: ">(!X2,X1)",
+  },
+  {
+    source: "If the badge is valid, the gate opens.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "Access is allowed if and only if the badge is valid.",
+    shape: "=(X1,X2)",
+  },
+  {
+    source: "The badge is necessary for access.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "The badge is sufficient for access.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "Either the badge is valid or the code is correct.",
+    shape: "|(X1,X2)",
+  },
+  {
+    source: "Neither the badge is valid nor the code is correct.",
+    shape: "&(!X1,!X2)",
+  },
+  {
+    source: "The badge is valid or the code is correct, but not both.",
+    shape: "^(X1,X2)",
+  },
+  {
+    source: "The alarm sounds or the alarm does not sound.",
+    shape: "|(X1,!X1)",
+    labels: ["The alarm sounds"],
+  },
+  {
+    source: "Not (the badge is valid or the code is correct).",
+    shape: "!|(X1,X2)",
+  },
+];
+contextualCorpus.forEach((item) => verifyNatural(item.source, item.shape, item.labels));
+assert.throws(
+  () => analyzeCNF("\"assertion without closing quote", "phrase"),
+  /cnf-unclosed-quote/
+);
+
 const productionPhrase = verifyEquivalent(
   "Il lotto di produzione non viene rilasciato nel caso in cui non sia arrivato il carico di titanio, ovvero, se è arrivato, la temperatura del reattore non ha raggiunto il target o si è verificato un calo di tensione.",
   "phrase"
