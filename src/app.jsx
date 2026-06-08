@@ -182,6 +182,21 @@ function App() {
   const lpResetRef = useRefApp(null);
   const cutsHydratedRef = useRefApp(false);
 
+  const [isOffline, setIsOffline] = useStateApp(() => {
+    return typeof navigator !== "undefined" && !navigator.onLine;
+  });
+
+  useEffectApp(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   useEffectApp(() => {
     try {
       localStorage.setItem("symplex_lp_current", JSON.stringify(lp));
@@ -383,6 +398,11 @@ function App() {
             title={typeof window !== "undefined" && window.innerWidth > 480 ? (tweaks.lang === "it" ? "Ricarica la pagina" : "Reload page") : undefined}
           >
             {t.appTitlePrefix} <em>{t.appTitleEm}</em>
+            {isOffline && (
+              <span className="offline-badge" title={tweaks.lang === "it" ? "Modalità offline attiva" : "Offline mode active"}>
+                ⚡
+              </span>
+            )}
           </h1>
         </div>
         <button

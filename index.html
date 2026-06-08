@@ -26,5 +26,14 @@
   <!-- Pre-bundled JSX (build with: npm run build).
        This loads as a plain script so file:// works without a server. -->
   <script src="dist/bundle.js"></script>
+  <script>
+    if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('Service Worker registered successfully:', reg.scope))
+          .catch(err => console.error('Service Worker registration failed:', err));
+      });
+    }
+  </script>
 </body>
 </html>
