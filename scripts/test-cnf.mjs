@@ -405,6 +405,138 @@ assert.throws(
   /cnf-unclosed-quote/
 );
 
+const projectFunding = verifyNatural(
+  "Il progetto di ricerca C può essere finanziato solo se vengono finanziati contemporaneamente sia il progetto A che il progetto B.",
+  ">(X1,&(X2,X3))",
+  [
+    "Il progetto di ricerca C può essere finanziato",
+    "vengono finanziati: il progetto A",
+    "vengono finanziati: il progetto B",
+  ]
+);
+assert.deepEqual(clauseKeys(projectFunding), ["!X1|X2", "!X1|X3"]);
+assert.deepEqual(projectFunding.constraints.map((item) => item.linearForm), [
+  "−x1 + x2 ≥ 0",
+  "−x1 + x3 ≥ 0",
+]);
+
+const operationsResearchCorpus = [
+  {
+    source: "Il progetto C viene finanziato solo se sono finanziati sia A sia B.",
+    shape: ">(X1,&(X2,X3))",
+  },
+  {
+    source: "C richiede che siano finanziati sia A che B.",
+    shape: ">(X1,&(X2,X3))",
+  },
+  {
+    source: "C richiede il finanziamento congiunto di A e B.",
+    shape: ">(X1,&(X2,X3))",
+  },
+  {
+    source: "C only if both A and B are funded.",
+    shape: ">(X1,&(X2,X3))",
+  },
+  {
+    source: "Devono essere scelti entrambi il progetto A e il progetto B.",
+    shape: "&(X1,X2)",
+  },
+  {
+    source: "Almeno uno tra il progetto A e il progetto B deve essere finanziato.",
+    shape: "|(X1,X2)",
+  },
+  {
+    source: "Al massimo uno tra il progetto A e il progetto B deve essere finanziato.",
+    shape: "|(!X1,!X2)",
+  },
+  {
+    source: "Esattamente uno tra il progetto A e il progetto B deve essere finanziato.",
+    shape: "^(X1,X2)",
+  },
+  {
+    source: "Solo uno dei progetti A e B deve essere finanziato.",
+    shape: "^(X1,X2)",
+  },
+  {
+    source: "Almeno due tra A, B e C devono essere finanziati.",
+    shape: "&(&(|(X1,X2),|(X1,X3)),|(X2,X3))",
+  },
+  {
+    source: "Al massimo due tra A, B e C devono essere finanziati.",
+    shape: "|(|(!X1,!X2),!X3)",
+  },
+  {
+    source: "Esattamente due tra i progetti A, B e C devono essere finanziati.",
+    shape: "&(&(&(|(X1,X2),|(X1,X3)),|(X2,X3)),|(|(!X1,!X2),!X3))",
+    labels: [
+      "devono essere finanziati: A",
+      "devono essere finanziati: B",
+      "devono essere finanziati: C",
+    ],
+  },
+  {
+    source: "At least two of A, B and C are funded.",
+    shape: "&(&(|(X1,X2),|(X1,X3)),|(X2,X3))",
+  },
+  {
+    source: "Il progetto A e il progetto B sono incompatibili.",
+    shape: "!&(X1,X2)",
+  },
+  {
+    source: "Il progetto A esclude il progetto B.",
+    shape: "!&(X1,X2)",
+  },
+  {
+    source: "Il progetto A è incompatibile con il progetto B.",
+    shape: "!&(X1,X2)",
+  },
+  {
+    source: "Non possono essere finanziati contemporaneamente sia il progetto A che il progetto B.",
+    shape: "!&(X1,X2)",
+  },
+  {
+    source: "Il progetto A e il progetto B non possono essere entrambi finanziati.",
+    shape: "!&(X1,X2)",
+  },
+  {
+    source: "Project A and project B cannot both be funded.",
+    shape: "!&(X1,X2)",
+  },
+  {
+    source: "Il progetto A e il progetto B devono essere finanziati insieme.",
+    shape: "=(X1,X2)",
+  },
+  {
+    source: "Project A and project B must be selected together.",
+    shape: "=(X1,X2)",
+  },
+  {
+    source: "Il progetto A dipende dal progetto B.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "Il progetto A è subordinato al progetto B.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "Il progetto A costituisce un prerequisito per il progetto B.",
+    shape: ">(X2,X1)",
+  },
+  {
+    source: "Il progetto A può essere finanziato solo insieme al progetto B.",
+    shape: ">(X1,X2)",
+  },
+  {
+    source: "Il progetto C non può essere finanziato senza il progetto A e il progetto B.",
+    shape: ">(X1,&(X2,X3))",
+  },
+  {
+    source: "Project C cannot be funded without both project A and project B.",
+    shape: ">(X1,&(X2,X3))",
+  },
+];
+operationsResearchCorpus.forEach((item) => verifyNatural(item.source, item.shape, item.labels));
+
 const productionPhrase = verifyEquivalent(
   "Il lotto di produzione non viene rilasciato nel caso in cui non sia arrivato il carico di titanio, ovvero, se è arrivato, la temperatura del reattore non ha raggiunto il target o si è verificato un calo di tensione.",
   "phrase"

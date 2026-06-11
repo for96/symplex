@@ -117,7 +117,7 @@ function formulaTokens(source) {
 function positiveItalianAssertion(raw) {
   let text = String(raw || "")
     .replace(/^[\s,;:.]+|[\s,;:.]+$/g, "")
-    .replace(/^(?:se|qualora)\s+/i, "")
+    .replace(/^(?:se|qualora|che|that)\s+/i, "")
     .replace(/^["“”]|["“”]$/g, "")
     .replace(/\b(?:isn't|aren't|wasn't|weren't)\b/gi, (word) => ({
       "isn't": "is not",
@@ -259,6 +259,255 @@ function joinNaturalAst(type, nodes) {
   return nodes.reduce((left, right) => binary(type, left, right));
 }
 
+function splitNaturalList(text) {
+  const matches = naturalTopLevelMatches(
+    text,
+    "(?:\\s*,\\s*|\\b(?:e|o|oppure|and|or)\\b)"
+  );
+  if (matches.length === 0) return [text.trim()].filter(Boolean);
+
+  const parts = [];
+  let cursor = 0;
+  for (const match of matches) {
+    const part = text.slice(cursor, match.index).trim();
+    if (part) parts.push(part);
+    cursor = match.index + match[0].length;
+  }
+  const last = text.slice(cursor).trim();
+  if (last) parts.push(last);
+  return parts;
+}
+
+function splitSharedPredicate(text) {
+  const matches = naturalTopLevelMatches(
+    text,
+    "\\b(?:è|sono|viene|vengono|sarà|saranno|sia|siano|deve|devono|può|possono|ha|hanno|is|are|was|were|will|must|can|may|has|have)\\b"
+  );
+  if (matches.length === 0) return null;
+  const match = matches[0];
+  const subject = text.slice(0, match.index).trim();
+  const predicate = text.slice(match.index).trim();
+  return subject && predicate ? { subject, predicate } : null;
+}
+
+function sharedNaturalAssertions(prefix, items) {
+  const sharedPrefix = String(prefix || "")
+    .replace(/\b(?:contemporaneamente|simultaneamente|insieme)\s*$/i, "")
+    .trim();
+  if (sharedPrefix) {
+    return items.map((item) => `${sharedPrefix}: ${item}`.trim());
+  }
+
+  if (splitSharedPredicate(items[0])) return items;
+  const trailing = splitSharedPredicate(items[items.length - 1]);
+  if (!trailing) return items;
+  return items.map((item, index) => {
+    const subject = index === items.length - 1 ? trailing.subject : item;
+    return `${trailing.predicate}: ${subject}`.trim();
+  });
+}
+
+function combinations(items, size) {
+  const result = [];
+  function visit(start, chosen) {
+    if (chosen.length === size) {
+      result.push(chosen.slice());
+      if (result.length > MAX_CLAUSES) throw new Error("cnf-too-large");
+      return;
+    }
+    for (let index = start; index <= items.length - (size - chosen.length); index++) {
+      chosen.push(items[index]);
+      visit(index + 1, chosen);
+      chosen.pop();
+    }
+  }
+  visit(0, []);
+  return result;
+}
+
+function atMostKAst(nodes, count) {
+  if (count < 0) return constant(false);
+  if (count >= nodes.length) return constant(true);
+  const clauses = combinations(nodes, count + 1).map((group) => (
+    joinNaturalAst("or", group.map((node) => unary("not", node)))
+  ));
+  return clauses.length === 1 ? clauses[0] : joinNaturalAst("and", clauses);
+}
+
+function atLeastKAst(nodes, count) {
+  if (count <= 0) return constant(true);
+  if (count > nodes.length) return constant(false);
+  const clauses = combinations(nodes, nodes.length - count + 1).map((group) => (
+    joinNaturalAst("or", group)
+  ));
+  return clauses.length === 1 ? clauses[0] : joinNaturalAst("and", clauses);
+}
+
+function exactKAst(nodes, count) {
+  if (count < 0 || count > nodes.length) return constant(false);
+  if (nodes.length === 2 && count === 1) return binary("xor", nodes[0], nodes[1]);
+  return binary("and", atLeastKAst(nodes, count), atMostKAst(nodes, count));
+}
+
+function naturalNumberValue(raw) {
+  const normalized = String(raw || "").toLocaleLowerCase("it");
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+  return {
+    zero: 0,
+    uno: 1,
+    una: 1,
+    one: 1,
+    due: 2,
+    two: 2,
+    tre: 3,
+    three: 3,
+    quattro: 4,
+    four: 4,
+    cinque: 5,
+    five: 5,
+    sei: 6,
+    six: 6,
+    sette: 7,
+    seven: 7,
+    otto: 8,
+    eight: 8,
+    nove: 9,
+    nine: 9,
+    dieci: 10,
+    ten: 10,
+  }[normalized];
+}
+
+function parseQuantifiedNaturalExpression(text, registry) {
+  const number = "(zero|uno|una|one|due|two|tre|three|quattro|four|cinque|five|sei|six|sette|seven|otto|eight|nove|nine|dieci|ten|\\d+)";
+  const classifier = "(?:\\s+(?:progett[oi]|alternative?|opzion[ei]|projects?|alternatives?|options?))?";
+  const patterns = [
+    {
+      kind: "exactly",
+      pattern: `\\b(?:esattamente|exactly)\\s+${number}${classifier}(?:\\s+(?:tra|fra|di|dei|delle|of))?\\b`,
+      countGroup: 1,
+    },
+    {
+      kind: "exactly",
+      pattern: "\\b(?:(?:uno|una|one)\\s+(?:e|and)\\s+(?:uno|one)\\s+(?:solo|soltanto|only)|(?:solo|soltanto|only)\\s+(?:uno|una|one)|(?:uno|una|one)\\s+(?:solo|soltanto|only))(?:\\s+(?:progett[oi]|alternative?|opzion[ei]|projects?|alternatives?|options?))?(?:\\s+(?:tra|fra|di|dei|delle|of))?\\b",
+      fixedCount: 1,
+    },
+    {
+      kind: "at-most",
+      pattern: `\\b(?:al\\s+massimo|non\\s+più\\s+di|non\\s+piu\\s+di|at\\s+most|no\\s+more\\s+than)\\s+${number}${classifier}(?:\\s+(?:tra|fra|di|dei|delle|of))?\\b`,
+      countGroup: 1,
+    },
+    {
+      kind: "at-least",
+      pattern: `\\b(?:almeno|at\\s+least)\\s+${number}${classifier}(?:\\s+(?:tra|fra|di|dei|delle|of))?\\b`,
+      countGroup: 1,
+    },
+    {
+      kind: "not-all",
+      pattern: "\\b(?:non\\s+(?:entrambi|entrambe|tutti\\s+e\\s+due)|not\\s+both)\\b",
+    },
+    {
+      kind: "all",
+      pattern: "\\b(?:entrambi|entrambe|ambedue|tutti\\s+e\\s+due|both|congiuntamente|simultaneamente|il\\s+finanziamento\\s+congiunto\\s+di|la\\s+selezione\\s+congiunta\\s+di)\\b",
+    },
+  ];
+
+  for (const definition of patterns) {
+    const matches = naturalTopLevelMatches(text, definition.pattern);
+    if (matches.length === 0) continue;
+    const match = matches[0];
+    const prefix = text.slice(0, match.index).trim();
+    const tail = text
+      .slice(match.index + match[0].length)
+      .trim()
+      .replace(/^(?:(?:i|le|the)\s+)?(?:progett[oi]|alternative?|opzion[ei]|projects?|alternatives?|options?)\s+/i, "")
+      .trim();
+    const items = splitNaturalList(tail);
+    if (items.length < 2) continue;
+
+    const assertions = sharedNaturalAssertions(prefix, items);
+    const nodes = assertions.map((assertion) => parseNaturalClause(assertion, registry));
+    if (definition.kind === "all") return joinNaturalAst("and", nodes);
+    if (definition.kind === "not-all") return unary("not", joinNaturalAst("and", nodes));
+    const count = definition.fixedCount ?? naturalNumberValue(match[definition.countGroup]);
+    if (!Number.isInteger(count)) continue;
+    if (definition.kind === "at-least") return atLeastKAst(nodes, count);
+    if (definition.kind === "at-most") return atMostKAst(nodes, count);
+    return exactKAst(nodes, count);
+  }
+  return null;
+}
+
+function parseItalianCorrelative(text, registry) {
+  const firstMarkers = naturalTopLevelMatches(text, "\\bsia\\b");
+  for (let index = firstMarkers.length - 1; index >= 0; index--) {
+    const firstMarker = firstMarkers[index];
+    const tail = text.slice(firstMarker.index + firstMarker[0].length);
+    const secondMarkers = naturalTopLevelMatches(tail, "\\b(?:sia|che)\\b");
+    if (secondMarkers.length === 0) continue;
+
+    const secondMarker = secondMarkers[0];
+    const prefix = text.slice(0, firstMarker.index).trim();
+    const first = tail.slice(0, secondMarker.index).trim();
+    const second = tail.slice(secondMarker.index + secondMarker[0].length).trim();
+    if (!first || !second) continue;
+
+    const forbiddenTogether =
+      /\bnon\s+(?:possono|devono|potranno)\b/i.test(prefix) &&
+      /\b(?:contemporaneamente|simultaneamente|insieme)\b/i.test(prefix);
+    if (forbiddenTogether) {
+      const nodes = [first, second].map((assertion) => parseNaturalClause(assertion, registry));
+      return unary("not", joinNaturalAst("and", nodes));
+    }
+    const assertions = sharedNaturalAssertions(prefix, [first, second]);
+    const nodes = assertions.map((assertion) => parseNaturalClause(assertion, registry));
+    return joinNaturalAst("and", nodes);
+  }
+  return null;
+}
+
+function parseMutualExclusion(text, registry) {
+  const direct = splitNaturalTopLevel(
+    text,
+    "(?:(?:è|e')\\s+incompatibile\\s+con\\b|\\b(?:is\\s+incompatible\\s+with|esclude|excludes)\\b)"
+  );
+  if (direct) {
+    return unary(
+      "not",
+      binary(
+        "and",
+        parseNaturalClause(direct.left, registry),
+        parseNaturalClause(direct.right, registry)
+      )
+    );
+  }
+
+  const relation = naturalTopLevelMatches(
+    text,
+    "\\s+(?:sono\\s+(?:mutuamente\\s+)?(?:incompatibili|esclusiv[ei])|non\\s+possono\\s+essere\\s+(?:entramb[ei]\\s+.+|.+?(?:contemporaneamente|simultaneamente|insieme))|are\\s+(?:mutually\\s+)?(?:incompatible|exclusive)|cannot\\s+(?:both\\s+be\\s+.+|be\\s+.+?(?:together|simultaneously)))\\s*$"
+  );
+  if (relation.length === 0) return null;
+  const subjects = text.slice(0, relation[0].index).trim();
+  const items = splitNaturalList(subjects);
+  if (items.length < 2) return null;
+  const nodes = items.map((item) => parseNaturalClause(item, registry));
+  return unary("not", joinNaturalAst("and", nodes));
+}
+
+function parseJointSelection(text, registry) {
+  const relation = naturalTopLevelMatches(
+    text,
+    "\\s+(?:(?:devono|dovranno)\\s+essere\\s+.+?(?:contemporaneamente|simultaneamente|insieme)|must\\s+(?:both\\s+)?be\\s+.+?(?:together|simultaneously))\\s*$"
+  );
+  if (relation.length === 0) return null;
+  const subjects = text.slice(0, relation[0].index).trim();
+  const items = splitNaturalList(subjects);
+  if (items.length < 2) return null;
+  const nodes = items.map((item) => parseNaturalClause(item, registry));
+  const links = nodes.slice(1).map((node) => binary("iff", nodes[0], node));
+  return links.length === 1 ? links[0] : joinNaturalAst("and", links);
+}
+
 function createNaturalRegistry() {
   return {
     assertions: [],
@@ -343,6 +592,18 @@ function naturalExpressionTokens(source, registry) {
 function parseNaturalExpression(source, registry) {
   let text = naturalText(source);
 
+  const quantified = parseQuantifiedNaturalExpression(text, registry);
+  if (quantified) return quantified;
+
+  const correlative = parseItalianCorrelative(text, registry);
+  if (correlative) return correlative;
+
+  const exclusion = parseMutualExclusion(text, registry);
+  if (exclusion) return exclusion;
+
+  const joint = parseJointSelection(text, registry);
+  if (joint) return joint;
+
   const neitherPrefix = text.match(/^(?:né|ne|neither)\s+/i);
   if (neitherPrefix) {
     const body = text.slice(neitherPrefix[0].length);
@@ -357,11 +618,6 @@ function parseNaturalExpression(source, registry) {
     if (nodes.length >= 2) return joinNaturalAst("and", nodes);
   }
 
-  if (/^sia\s+/i.test(text)) {
-    const body = text.replace(/^sia\s+/i, "");
-    const correlative = splitNaturalTopLevel(body, "\\b(?:sia|che)\\b");
-    if (correlative) text = `${correlative.left} e ${correlative.right}`;
-  }
   if (/^both\s+/i.test(text)) text = text.replace(/^both\s+/i, "");
   if (/^(?:either|o|oppure)\s+/i.test(text)) {
     text = text.replace(/^(?:either|o|oppure)\s+/i, "");
@@ -498,9 +754,21 @@ function parseNaturalClause(source, registry, depth = 0) {
     return binary("implies", unary("not", condition), left);
   }
 
+  const without = splitNaturalTopLevel(text, "\\b(?:senza|without)\\b");
+  if (without) {
+    const dependent = without.left
+      .replace(/\bnon\s+(?:può|puo|potrà|potra)(?=\s|$)/i, "può")
+      .replace(/\b(?:cannot|can't)\b/i, "can");
+    return binary(
+      "implies",
+      parseNaturalClause(dependent, registry, depth + 1),
+      parseNaturalClause(without.right, registry, depth + 1)
+    );
+  }
+
   const onlyIf = splitNaturalTopLevel(
     text,
-    "\\b(?:(?:solo|soltanto|unicamente)\\s+(?:se|quando)|only\\s+(?:if|when))\\b"
+    "(?:\\b(?:(?:solo|soltanto|unicamente)\\s+(?:se|quando|insieme\\s+(?:a|al|alla))|only\\s+(?:if|when|together\\s+with)|dipende\\s+(?:da|dal|dalla|dai|dalle)|necessita\\s+di|presuppone|depends\\s+on|is\\s+(?:conditional|subject)\\s+to)\\b|(?:è|e')\\s+(?:subordinat[oa]|vincolat[oa])\\s+(?:a|al|alla)\\b)"
   );
   if (onlyIf) {
     return binary(
@@ -530,6 +798,9 @@ function parseNaturalClause(source, registry, depth = 0) {
     "\\s+(?:è|e')\\s+(?:una\\s+condizione\\s+)?necessari[oa]?\\s+(?:perché|perche|affinché|affinche|per)\\s+"
   ) || splitNaturalTopLevel(
     text,
+    "\\s+(?:è|e'|costituisce)\\s+(?:un\\s+)?prerequisito\\s+per\\s+"
+  ) || splitNaturalTopLevel(
+    text,
     "\\s+is\\s+(?:a\\s+)?necessary(?:\\s+condition)?\\s+for\\s+"
   );
   if (necessary) {
@@ -552,7 +823,7 @@ function parseNaturalClause(source, registry, depth = 0) {
 
   const reverse = splitNaturalTopLevel(
     text,
-    "(?:\\b(?:nel\\s+caso\\s+in\\s+cui|a\\s+condizione\\s+che|a\\s+patto\\s+che|purche|provided\\s+that|as\\s+long\\s+as|ogni\\s+volta\\s+che|whenever|quando|when|se|if|perche|because)\\b|(?:purché|perché)(?=\\s|$))"
+    "(?:\\b(?:nel\\s+caso\\s+in\\s+cui|a\\s+condizione\\s+che|a\\s+patto\\s+che|qualora|purche|provided\\s+that|as\\s+long\\s+as|ogni\\s+volta\\s+che|whenever|quando|when|se|if|perche|because)\\b|(?:purché|perché)(?=\\s|$))"
   );
   if (reverse) {
     const left = parseNaturalClause(reverse.left, registry, depth + 1);
